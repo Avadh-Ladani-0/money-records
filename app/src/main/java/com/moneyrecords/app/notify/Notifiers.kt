@@ -95,6 +95,17 @@ object Notifications {
             .setSmallIcon(R.drawable.ic_notification)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .hideOnLockScreen(context, channel)
+
+    /** On a locked phone show only "MoneyRecords · New notification"; full text after unlocking. */
+    fun NotificationCompat.Builder.hideOnLockScreen(context: Context, channel: String): NotificationCompat.Builder =
+        setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setPublicVersion(
+            NotificationCompat.Builder(context, channel)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("MoneyRecords")
+                .setContentText("New notification")
+                .build(),
+        )
 }
 
 private val shortDate = DateTimeFormatter.ofPattern("d MMM", Locale.getDefault())

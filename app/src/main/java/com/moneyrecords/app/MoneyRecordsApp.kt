@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.moneyrecords.app.domain.repository.UserPrefsRepository
+import com.moneyrecords.app.security.AppLockManager
 import com.moneyrecords.app.work.DailyReminderWorker
 import com.moneyrecords.app.work.MonthStartBudgetWorker
 import com.moneyrecords.app.work.RecurringWorker
@@ -22,9 +23,11 @@ class MoneyRecordsApp : Application(), Configuration.Provider {
         get() = Configuration.Builder().setWorkerFactory(workerFactory).build()
 
     @Inject lateinit var prefs: UserPrefsRepository
+    @Inject lateinit var appLock: AppLockManager
 
     override fun onCreate() {
         super.onCreate()
+        appLock.start(ProcessLifecycleOwner.get().lifecycleScope)
         MonthStartBudgetWorker.schedule(this)
         RecurringWorker.schedule(this)
         // The daily reminder depends on the chosen time, so read settings first.

@@ -6,6 +6,7 @@ import com.moneyrecords.app.domain.model.Record
 import com.moneyrecords.app.domain.repository.CalculatorPrefs
 import com.moneyrecords.app.domain.repository.RecordRepository
 import com.moneyrecords.app.domain.repository.UserPrefsRepository
+import com.moneyrecords.app.security.AppLockManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +19,7 @@ import javax.inject.Inject
 class AppViewModel @Inject constructor(
     private val records: RecordRepository,
     private val prefs: UserPrefsRepository,
+    val appLock: AppLockManager,
 ) : ViewModel() {
 
     val calculator: StateFlow<CalculatorPrefs?> = prefs.observeCalculator()

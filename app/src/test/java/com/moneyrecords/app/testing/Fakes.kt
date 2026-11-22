@@ -115,6 +115,9 @@ class FakePrefs : UserPrefsRepository {
     override suspend fun updateNotifications(change: (com.moneyrecords.app.domain.repository.NotificationPrefs) -> com.moneyrecords.app.domain.repository.NotificationPrefs) =
         notificationPrefs.update(change)
     override suspend fun markSent(key: String) = sent.add(key)
+    val appLock = MutableStateFlow(com.moneyrecords.app.domain.lock.AppLockPrefs())
+    override fun observeAppLock() = appLock
+    override suspend fun updateAppLock(change: (com.moneyrecords.app.domain.lock.AppLockPrefs) -> com.moneyrecords.app.domain.lock.AppLockPrefs) = appLock.update(change)
     override suspend fun lastBudgetPrompt() = lastPrompt
     override suspend fun setLastBudgetPrompt(month: YearMonth) { lastPrompt = month }
     override suspend fun recordDefaults(kind: RecordKind) = defaults[kind] ?: RecordDefaults()

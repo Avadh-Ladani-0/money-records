@@ -2,7 +2,13 @@ package com.moneyrecords.app
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.view.WindowManager
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.moneyrecords.app.security.AppLockManager
+import kotlinx.coroutines.launch
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -17,8 +23,10 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+// FragmentActivity: required by Android's biometric/screen-lock prompt.
+class MainActivity : FragmentActivity() {
     @Inject lateinit var budgetPrompt: BudgetPromptNotifier
+    @Inject lateinit var appLock: AppLockManager
 
     /** Requests from notifications (open Budgets, add a record, edit a due recurring item). */
     private val requests = Channel<AppRequest>(Channel.BUFFERED)
@@ -28,6 +36,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handle(intent)
+        // "Hide in recent apps": blank app-switcher preview (also blocks screenshots).
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.CREATED) {
+                appLock.settings.collect { s ->
+                    if (s.hideInRecents) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
+        }
         setContent {
             MoneyRecordsTheme {
                 MoneyRecordsRoot(requests = requests.receiveAsFlow())

@@ -22,6 +22,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object RecurringRoute
 @Serializable data class RecurringEditorRoute(val ruleId: Long)
 @Serializable data object NotificationSettingsRoute
+@Serializable data object AppLockSettingsRoute
 
 @Serializable data class AccountEditorRoute(val accountId: Long = 0)
 

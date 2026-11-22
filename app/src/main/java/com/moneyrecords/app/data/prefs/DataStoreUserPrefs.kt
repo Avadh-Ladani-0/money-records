@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.moneyrecords.app.domain.repository.NotificationPrefs
+import com.moneyrecords.app.domain.lock.AppLockPrefs
 import androidx.datastore.preferences.preferencesDataStore
 import com.moneyrecords.app.domain.model.RecordKind
 import com.moneyrecords.app.domain.repository.CalculatorPrefs
@@ -44,6 +45,9 @@ class DataStoreUserPrefs @Inject constructor(
     private val nBudgets = booleanPreferencesKey("notify_budget_alerts")
     private val nMonthStart = booleanPreferencesKey("notify_month_start")
     private val sentKeys = stringSetPreferencesKey("sent_notifications")
+    private val lockEnabled = booleanPreferencesKey("lock_enabled")
+    private val lockRelock = intPreferencesKey("lock_relock_seconds")
+    private val lockHideRecents = booleanPreferencesKey("lock_hide_recents")
     private val calcEnabled = booleanPreferencesKey("calc_enabled")
     private val calcX = floatPreferencesKey("calc_x")
     private val calcY = floatPreferencesKey("calc_y")
@@ -116,6 +120,25 @@ class DataStoreUserPrefs @Inject constructor(
             }
         }
         return added
+    }
+
+    override fun observeAppLock(): Flow<AppLockPrefs> = store.data.map { p ->
+        val d = AppLockPrefs()
+        AppLockPrefs(
+            enabled = p[lockEnabled] ?: d.enabled,
+            relockAfterSeconds = p[lockRelock] ?: d.relockAfterSeconds,
+            hideInRecents = p[lockHideRecents] ?: d.hideInRecents,
+        )
+    }
+
+    override suspend fun updateAppLock(change: (AppLockPrefs) -> AppLockPrefs) {
+        val current = observeAppLock().first()
+        val next = change(current)
+        store.edit {
+            it[lockEnabled] = next.enabled
+            it[lockRelock] = next.relockAfterSeconds.coerceAtLeast(0)
+            it[lockHideRecents] = next.hideInRecents
+        }
     }
 
     override fun observeCalculator(): Flow<CalculatorPrefs> = store.data.map { prefs ->

@@ -8,7 +8,7 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 - **Design**: minimalist monochrome with a single red accent and dot-matrix numbers, in light and dark themes.
 
 > Status: early development (v0.1.0). Accounts, records, the Records tab with filters and search,
-> categories, monthly budgets, recurring records, reminders and a floating calculator work.
+> categories, monthly budgets, recurring records, reminders, app lock and a floating calculator work.
 
 ## Features so far
 
@@ -36,6 +36,10 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 - **Reminders**: a daily "log today's spending" nudge (default 9 PM, skipped if you've already logged),
   "due tomorrow" heads-ups for recurring bills, and 80% / over-budget alerts for every budget type.
   All can be switched off in Settings → Notifications.
+- **App lock**: lock MoneyRecords with your phone's own screen lock (fingerprint, face, PIN or pattern).
+  Locks on a fresh start and after time away (Immediately · 30 s · 1 min · 5 min, default 1 min).
+  Optionally hides the app's content in recent apps (also blocks screenshots). Notifications never
+  show amounts on the phone's lock screen. Settings → App lock.
 - **Floating calculator**: draggable bubble on every screen with a Copy button; can be turned off in Settings.
 
 ## Roadmap
@@ -47,8 +51,8 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 | 3 | Core screens: add/edit record, records list & search, accounts, categories, live Home, floating calculator | ✅ Done |
 | 4 | Budgets: overall, per-category and "everything else" monthly limits, carry-forward, progress | ✅ Done |
 | 5 | Recurring records and reminders (+ budget alerts) | ✅ Done |
-| 6 | App lock: PIN and fingerprint | ⏳ Next |
-| 7 | Home-screen widget | Planned |
+| 6 | App lock with the phone's screen lock, privacy in recents and on the lock screen | ✅ Done |
+| 7 | Home-screen widget | ⏳ Next |
 | 8 | Backup & restore to a file (free) | Planned |
 | 9 | Polish: motion, haptics, accessibility | Planned |
 

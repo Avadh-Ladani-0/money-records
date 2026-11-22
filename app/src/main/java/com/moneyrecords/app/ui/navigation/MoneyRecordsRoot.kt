@@ -40,6 +40,8 @@ import com.moneyrecords.app.ui.feature.designsystem.DesignSystemScreen
 import com.moneyrecords.app.ui.feature.categories.CategoriesScreen
 import com.moneyrecords.app.ui.feature.categories.CategoryEditorScreen
 import com.moneyrecords.app.ui.feature.home.HomeScreen
+import com.moneyrecords.app.ui.feature.lock.LockScreen
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.moneyrecords.app.ui.components.QuickCalculatorOverlay
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +57,7 @@ import com.moneyrecords.app.ui.feature.record.RecordEditorScreen
 import com.moneyrecords.app.ui.feature.records.RecordsScreen
 import com.moneyrecords.app.ui.feature.settings.SettingsScreen
 import com.moneyrecords.app.ui.feature.settings.NotificationSettingsScreen
+import com.moneyrecords.app.ui.feature.settings.AppLockSettingsScreen
 import com.moneyrecords.app.ui.feature.recurring.RecurringEditorScreen
 import com.moneyrecords.app.ui.feature.recurring.RecurringScreen
 import kotlinx.coroutines.launch
@@ -83,6 +86,7 @@ fun MoneyRecordsRoot(
     val scope = rememberCoroutineScope()
 
     val calculator by appViewModel.calculator.collectAsStateWithLifecycle()
+    val locked by appViewModel.appLock.locked.collectAsStateWithLifecycle()
     // Notification "✗ Edit" → Budgets tab (for the current month).
     LaunchedEffect(requests) {
         requests.collect { request ->
@@ -108,6 +112,8 @@ fun MoneyRecordsRoot(
     }
 
     Box(Modifier.fillMaxSize().nestedScroll(scrollWatcher)) {
+        // While locked, hide the content underneath from accessibility services too.
+        Box(if (locked) Modifier.fillMaxSize().clearAndSetSemantics { } else Modifier.fillMaxSize()) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             contentWindowInsets = WindowInsets(0),
@@ -205,6 +211,7 @@ fun MoneyRecordsRoot(
                         onOpenCategories = { navController.navigate(CategoriesRoute) },
                         onOpenRecurring = { navController.navigate(RecurringRoute) },
                         onOpenNotifications = { navController.navigate(NotificationSettingsRoute) },
+                        onOpenAppLock = { navController.navigate(AppLockSettingsRoute) },
                     )
                 }
                 composable<CategoriesRoute> {
@@ -222,14 +229,17 @@ fun MoneyRecordsRoot(
                     RecurringScreen(onBack = { navController.popBackStack() }, onOpen = { id -> navController.navigate(RecurringEditorRoute(id)) })
                 }
                 composable<RecurringEditorRoute> { RecurringEditorScreen(onClose = { navController.popBackStack() }) }
+                composable<AppLockSettingsRoute> { AppLockSettingsScreen(onBack = { navController.popBackStack() }) }
                 composable<NotificationSettingsRoute> { NotificationSettingsScreen(onBack = { navController.popBackStack() }) }
                 composable<DesignSystemRoute> {
                     DesignSystemScreen(onBack = { navController.popBackStack() })
                 }
             }
         }
-        calculator?.takeIf { it.enabled }?.let { prefs ->
+        }
+        calculator?.takeIf { it.enabled && !locked }?.let { prefs ->
             QuickCalculatorOverlay(prefs = prefs, scrollSignal = scrollSignal, onMoved = appViewModel::moveCalculator)
         }
+        if (locked) LockScreen(appViewModel.appLock)
     }
 }

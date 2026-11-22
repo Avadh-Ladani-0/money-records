@@ -1,6 +1,7 @@
 package com.moneyrecords.app.domain.repository
 
 import com.moneyrecords.app.domain.model.RecordKind
+import com.moneyrecords.app.domain.lock.AppLockPrefs
 import kotlinx.coroutines.flow.Flow
 import java.time.YearMonth
 
@@ -46,6 +47,9 @@ interface UserPrefsRepository {
      * aren't repeated. Returns true if [key] was new (and is now recorded).
      */
     suspend fun markSent(key: String): Boolean
+
+    fun observeAppLock(): Flow<AppLockPrefs>
+    suspend fun updateAppLock(change: (AppLockPrefs) -> AppLockPrefs)
 
     fun observeCalculator(): Flow<CalculatorPrefs>
     suspend fun setCalculatorEnabled(enabled: Boolean)

@@ -49,7 +49,7 @@ class BudgetPromptNotifier @Inject constructor(@ApplicationContext private val c
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val notification = with(Notifications) { NotificationCompat.Builder(context, CHANNEL_ID).hideOnLockScreen(context, CHANNEL_ID) }
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Keep last month's budgets?")
             .setContentText("Use $previous's budget limits for $current too.")

@@ -40,6 +40,7 @@ fun SettingsScreen(
     onOpenCategories: () -> Unit,
     onOpenRecurring: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onOpenAppLock: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val calculatorEnabled by viewModel.calculatorEnabled.collectAsStateWithLifecycle()
@@ -83,7 +84,7 @@ fun SettingsScreen(
 
         item { Spacer(Modifier.height(Space.xl)); SectionLabel("Security & data") }
         item {
-            ListRow(title = "App lock", subtitle = "PIN and fingerprint", icon = Icons.Outlined.Lock, trailing = { Tag("Soon") })
+            ListRow(title = "App lock", subtitle = "Fingerprint, face or phone screen lock", icon = Icons.Outlined.Lock, onClick = onOpenAppLock)
         }
         item {
             ListRow(title = "Backup & restore", subtitle = "Save your data to a file", icon = Icons.Outlined.SettingsBackupRestore, trailing = { Tag("Soon") })

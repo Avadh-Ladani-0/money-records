@@ -1,7 +1,11 @@
 package com.moneyrecords.app.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,8 +27,9 @@ import kotlin.math.floor
 import kotlin.math.max
 
 /**
- * A progress bar drawn as a row of dots that light up in turn.
- * Past 100% the lit dots switch to the accent colour to flag an overrun.
+ * A progress bar drawn as a row of dots that light up in turn. Fills from empty when first shown.
+ * Past 100% the lit dots switch to the theme's "over" colour to flag an overrun.
+ * [spoken] is what a screen reader says, e.g. "₹4,000 of ₹10,000".
  */
 @Composable
 fun DotProgress(
@@ -32,21 +37,26 @@ fun DotProgress(
     modifier: Modifier = Modifier,
     dotSize: Dp = 8.dp,
     activeColor: Color = MaterialTheme.colorScheme.onBackground,
-    overColor: Color = MrTheme.colors.accent,
+    overColor: Color = MrTheme.colors.over,
     dimColor: Color = MrTheme.colors.dotDim,
+    spoken: String? = null,
 ) {
     val over = progress > 1f
-    val animated by animateFloatAsState(
-        targetValue = progress.coerceIn(0f, 1f),
-        animationSpec = tween(durationMillis = 700),
-        label = "dotProgress",
-    )
-    val lit = if (over) overColor else activeColor
+    val fill = remember { Animatable(0f) }
+    LaunchedEffect(progress) {
+        fill.animateTo(progress.coerceIn(0f, 1f), tween(durationMillis = 700))
+    }
+    val animated = fill.value
+    val lit by animateColorAsState(if (over) overColor else activeColor, tween(400), label = "dotColor")
     Canvas(
         modifier
             .fillMaxWidth()
             .height(dotSize)
-            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(progress.coerceIn(0f, 1f), 0f..1f) },
+            .semantics {
+                progressBarRangeInfo = ProgressBarRangeInfo(progress.coerceIn(0f, 1f), 0f..1f)
+                val pct = "${(progress * 100).toInt()} percent"
+                stateDescription = listOfNotNull(spoken, pct, if (over) "over budget" else null).joinToString(", ")
+            },
     ) {
         val d = size.height
         val minGap = d * 0.6f

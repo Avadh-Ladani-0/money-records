@@ -34,6 +34,7 @@ import androidx.lifecycle.viewModelScope
 import com.moneyrecords.app.domain.repository.NotificationPrefs
 import com.moneyrecords.app.domain.repository.UserPrefsRepository
 import com.moneyrecords.app.ui.components.ListRow
+import com.moneyrecords.app.ui.components.SwitchRow
 import com.moneyrecords.app.ui.components.ScreenHeader
 import com.moneyrecords.app.ui.components.SectionLabel
 import com.moneyrecords.app.ui.components.rememberNotificationPermissionRequest
@@ -132,11 +133,5 @@ fun NotificationSettingsScreen(onBack: () -> Unit, viewModel: NotificationSettin
 
 @Composable
 private fun Toggle(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, checked: Boolean, onChange: (Boolean) -> Unit) {
-    ListRow(
-        title = title, subtitle = subtitle, icon = icon,
-        onClick = { onChange(!checked) },
-        trailing = {
-            Switch(checked = checked, onCheckedChange = onChange, colors = SwitchDefaults.colors(checkedTrackColor = MrTheme.colors.accent))
-        },
-    )
+    SwitchRow(title = title, subtitle = subtitle, icon = icon, checked = checked, onCheckedChange = onChange)
 }

@@ -143,6 +143,8 @@ class RecordEditorViewModel @Inject constructor(
     private val recordId: Long = handle.get<Long>(RouteArgs.RECORD_ID) ?: 0L
     private val duplicateOf: Long = handle.get<Long>(RouteArgs.DUPLICATE_OF) ?: 0L
     private val fromRuleId: Long = handle.get<Long>(RouteArgs.FROM_RULE_ID) ?: 0L
+    /** Type to start a new record with (from the Quick add widget); null = expense. */
+    private val startKind: RecordKind? = handle.get<String>(RouteArgs.KIND)?.let { k -> RecordKind.entries.firstOrNull { it.name == k } }
     private val mode = when {
         recordId != 0L -> EditorMode.EDIT
         duplicateOf != 0L -> EditorMode.DUPLICATE
@@ -223,7 +225,7 @@ class RecordEditorViewModel @Inject constructor(
             }
         } else {
             if (mode != EditorMode.NEW) _state.update { it.copy(error = "Record not found") }
-            applyDefaults(RecordKind.EXPENSE)
+            applyDefaults(startKind ?: RecordKind.EXPENSE)
         }
         loadRecents(_state.value.kind)
         _state.update { it.copy(loading = false) }
@@ -288,6 +290,12 @@ class RecordEditorViewModel @Inject constructor(
             refreshOptions()
             loadRecents(kind)
         }
+    }
+
+    /** Whether [key] would change the amount (refused keys get a "reject" buzz). */
+    fun accepts(key: KeypadKey): Boolean {
+        val text = _state.value.amountText
+        return key == KeypadKey.Clear || applyKey(text, key, evaluate = { t -> Expression.evaluate(t)?.let(Expression::toPlainText) }) != text
     }
 
     fun onKey(key: KeypadKey) = _state.update {

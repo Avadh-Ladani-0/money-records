@@ -8,11 +8,13 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.moneyrecords.app.domain.repository.NotificationPrefs
 import com.moneyrecords.app.domain.lock.AppLockPrefs
 import androidx.datastore.preferences.preferencesDataStore
 import com.moneyrecords.app.domain.model.RecordKind
+import com.moneyrecords.app.domain.repository.BackupPrefs
 import com.moneyrecords.app.domain.repository.CalculatorPrefs
 import com.moneyrecords.app.domain.repository.RecordDefaults
 import com.moneyrecords.app.domain.repository.UserPrefsRepository
@@ -51,6 +53,13 @@ class DataStoreUserPrefs @Inject constructor(
     private val calcEnabled = booleanPreferencesKey("calc_enabled")
     private val calcX = floatPreferencesKey("calc_x")
     private val calcY = floatPreferencesKey("calc_y")
+    private val themeKey = stringPreferencesKey("theme")
+    private val bAuto = booleanPreferencesKey("backup_auto")
+    private val bFolder = stringPreferencesKey("backup_folder_uri")
+    private val bFolderName = stringPreferencesKey("backup_folder_name")
+    private val bLastAt = longPreferencesKey("backup_last_at")
+    private val bLastResult = stringPreferencesKey("backup_last_result")
+    private val bPassword = stringPreferencesKey("backup_password")
 
     override suspend fun recordDefaults(kind: RecordKind): RecordDefaults {
         val prefs = store.data.first()
@@ -138,6 +147,37 @@ class DataStoreUserPrefs @Inject constructor(
             it[lockEnabled] = next.enabled
             it[lockRelock] = next.relockAfterSeconds.coerceAtLeast(0)
             it[lockHideRecents] = next.hideInRecents
+        }
+    }
+
+    override fun observeTheme(): Flow<String> = store.data.map { it[themeKey] ?: "NOTHING" }
+
+    override suspend fun setTheme(key: String) {
+        store.edit { it[themeKey] = key }
+    }
+
+    override fun observeBackup(): Flow<BackupPrefs> = store.data.map { p ->
+        BackupPrefs(
+            autoEnabled = p[bAuto] ?: false,
+            folderUri = p[bFolder],
+            folderName = p[bFolderName],
+            lastBackupAtMillis = p[bLastAt],
+            lastResult = p[bLastResult],
+            wrappedPassword = p[bPassword],
+        )
+    }
+
+    override suspend fun updateBackup(change: (BackupPrefs) -> BackupPrefs) {
+        store.edit { p ->
+            val current = BackupPrefs(p[bAuto] ?: false, p[bFolder], p[bFolderName], p[bLastAt], p[bLastResult], p[bPassword])
+            val n = change(current)
+            p[bAuto] = n.autoEnabled
+            fun <T> put(key: Preferences.Key<T>, value: T?) { if (value == null) p.remove(key) else p[key] = value }
+            put(bFolder, n.folderUri)
+            put(bFolderName, n.folderName)
+            put(bLastAt, n.lastBackupAtMillis)
+            put(bLastResult, n.lastResult)
+            put(bPassword, n.wrappedPassword)
         }
     }
 

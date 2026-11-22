@@ -1,6 +1,17 @@
 package com.moneyrecords.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.semantics.stateDescription
+import com.moneyrecords.app.ui.icons.CategoryBadge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,13 +43,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.moneyrecords.app.domain.model.Category
 import com.moneyrecords.app.domain.repository.ComboIcon
-import com.moneyrecords.app.ui.icons.CategoryIcon
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import com.moneyrecords.app.ui.theme.MrTheme
 import com.moneyrecords.app.ui.theme.Space
 
-/** Segmented control: equal-width pills inside a rounded track. */
+/** Segmented control: equal-width options with a pill that slides to the selected one. */
 @Composable
 fun <T> SegmentedPills(
     options: List<T>,
@@ -47,30 +57,49 @@ fun <T> SegmentedPills(
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    val haptics = rememberHaptics()
+    val index = options.indexOf(selected).coerceAtLeast(0)
+    BoxWithConstraints(
         modifier
             .fillMaxWidth()
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .padding(4.dp)
-            .selectableGroup(),
+            .padding(Space.xs),
     ) {
-        options.forEach { option ->
-            val isSelected = option == selected
+        val cell = maxWidth / options.size
+        val offset by animateDpAsState(cell * index, spring(dampingRatio = 0.85f, stiffness = 500f), label = "segment")
+        // Sized to the row (which grows with large fonts); the pill fills its height.
+        Box(Modifier.matchParentSize()) {
             Box(
                 Modifier
-                    .weight(1f)
-                    .height(40.dp)
+                    .offset(x = offset)
+                    .width(cell)
+                    .fillMaxHeight()
                     .clip(CircleShape)
-                    .background(if (isSelected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .selectable(selected = isSelected, onClick = { onSelect(option) }, role = Role.Tab),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    label(option),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (isSelected) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurfaceVariant,
+                    .background(MaterialTheme.colorScheme.onBackground),
+            )
+        }
+        Row(Modifier.fillMaxWidth().selectableGroup()) {
+            options.forEach { option ->
+                val isSelected = option == selected
+                val textColor by animateColorAsState(
+                    if (isSelected) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurfaceVariant,
+                    label = "segmentText",
                 )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .clip(CircleShape)
+                        .selectable(
+                            selected = isSelected,
+                            onClick = { if (!isSelected) haptics.select(); onSelect(option) },
+                            role = Role.RadioButton,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(label(option), style = MaterialTheme.typography.labelLarge, color = textColor)
+                }
             }
         }
     }
@@ -160,35 +189,42 @@ private fun CategoryCell(
     onLongClick: (() -> Unit)?,
     modifier: Modifier,
 ) {
+    val haptics = rememberHaptics()
+    val badge by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.onBackground else MrTheme.colors.badge,
+        label = "cellBadge",
+    )
     Column(
         modifier
             .clip(MaterialTheme.shapes.medium)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick, role = Role.RadioButton)
-            .semantics { this.selected = selected }
+            .combinedClickable(
+                onClick = { haptics.select(); onClick() },
+                onLongClick = onLongClick?.let { { haptics.longPress(); it() } },
+                onLongClickLabel = if (onLongClick != null) "Combine with another category" else null,
+                role = Role.RadioButton,
+            )
+            .semantics {
+                this.selected = selected
+                if (category.children.isNotEmpty()) stateDescription = if (selected) "Selected, has subcategories" else "Has subcategories"
+            }
             .padding(vertical = Space.sm),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            Modifier
-                .size(48.dp)
-                .background(
-                    if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    CircleShape,
-                )
-                .then(if (marked) Modifier.border(2.dp, MrTheme.colors.accent, CircleShape) else Modifier),
-            contentAlignment = Alignment.Center,
-        ) {
-            CategoryIcon(
+        Box(contentAlignment = Alignment.Center) {
+            CategoryBadge(
                 category.iconKey,
-                tint = if (selected) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurface,
+                size = 48.dp,
+                background = if (selected) badge else null,
+                tint = if (selected) MaterialTheme.colorScheme.background else null,
+                modifier = if (marked) Modifier.border(2.dp, MrTheme.colors.accent, CircleShape) else Modifier,
             )
             if (category.children.isNotEmpty()) {
-                // Small accent dot marks categories that have subcategories.
+                // Small dot marks categories that have subcategories.
                 Box(
                     Modifier
                         .align(Alignment.TopEnd)
                         .size(8.dp)
-                        .background(MrTheme.colors.accent, CircleShape),
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant, CircleShape),
                 )
             }
         }
@@ -200,7 +236,7 @@ private fun CategoryCell(
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 2.dp),
+            modifier = Modifier.padding(horizontal = Space.xs / 2),
         )
     }
 }
@@ -210,9 +246,10 @@ private fun CategoryCell(
 fun ValueChip(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier
+            .heightIn(min = 48.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .clickable(onClick = onClick)
+            .clickable(onClick = onClick, role = Role.Button)
             .padding(horizontal = Space.lg, vertical = Space.md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.sm),

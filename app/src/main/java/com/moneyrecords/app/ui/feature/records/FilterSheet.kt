@@ -88,6 +88,9 @@ fun FilterSheet(state: RecordsState, viewModel: RecordsViewModel, onDismiss: () 
             }
 
             SectionLabel("Accounts · any of")
+            if (state.accounts.isEmpty()) {
+                Text("No accounts yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
                 state.accounts.forEach { account ->
                     ChoiceChip(

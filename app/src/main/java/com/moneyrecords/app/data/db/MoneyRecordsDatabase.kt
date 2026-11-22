@@ -27,6 +27,7 @@ abstract class MoneyRecordsDatabase : RoomDatabase() {
     abstract fun recurringRuleDao(): RecurringRuleDao
     abstract fun budgetDao(): BudgetDao
     abstract fun budgetOffsetDao(): BudgetOffsetDao
+    abstract fun backupDao(): BackupDao
 
     companion object {
         const val NAME = "moneyrecords.db"

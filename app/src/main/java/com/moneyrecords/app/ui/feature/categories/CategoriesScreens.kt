@@ -1,5 +1,10 @@
 package com.moneyrecords.app.ui.feature.categories
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import com.moneyrecords.app.ui.components.EmptyState
+import com.moneyrecords.app.ui.components.rememberHaptics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,6 +89,7 @@ fun CategoriesScreen(
     val view = LocalView.current
     var combineFirst by remember { mutableStateOf<Long?>(null) }
     var combineSecond by remember { mutableStateOf<Long?>(null) }
+    val haptics = rememberHaptics()
     LaunchedEffect(viewModel) { viewModel.messages.collect(onMessage) }
     val byId = state.active.associateBy { it.id }
 
@@ -99,25 +105,41 @@ fun CategoriesScreen(
             SegmentedPills(listOf(CategoryKind.EXPENSE, CategoryKind.INCOME), state.kind, { it.label() }, { combineFirst = null; viewModel.setKind(it) })
             Spacer(Modifier.height(Space.md))
             val first = combineFirst?.let(byId::get)
-            if (first != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Combine “${first.name}” with… tap another main category", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { combineFirst = null }) { Text("Cancel", color = MaterialTheme.colorScheme.onBackground) }
+            AnimatedContent(targetState = first, label = "combineBanner") { picked ->
+                if (picked != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(MaterialTheme.colorScheme.surfaceContainer)
+                            .padding(start = Space.md),
+                    ) {
+                        Text("Combine “${picked.name}” with… tap another main category", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { combineFirst = null }) { Text("Cancel", color = MaterialTheme.colorScheme.onBackground) }
+                    }
+                } else {
+                    Text("Long-press a main category to combine it with another.", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            } else {
-                Text("Long-press a main category to combine it with another.", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(Space.md))
+        }
+        if (!state.loading && state.active.isEmpty()) item {
+            EmptyState(
+                title = "No ${state.kind.label().lowercase()} categories",
+                message = "Tap + to add one — or archived ones can be restored below.",
+            )
         }
         // Same order as the record picker: each combined category right after the category it counts in.
         items(pickerTiles(state.active), key = { it.id }) { parent ->
             val isCombo = ComboIcon.isCombo(parent.iconKey)
             val combinable = !isCombo
-            Column {
+            Column(Modifier.animateItem()) {
                 ListRow(
                     title = parent.name,
-                    leading = { CategoryIcon(parent.iconKey) },
+                    iconKey = parent.iconKey,
+                    onLongClickLabel = if (combinable) "Combine with another category" else null,
                     subtitle = when {
                         combineFirst == parent.id -> "Selected to combine"
                         isCombo -> "Combined · counts in ${byId[parent.parentId]?.name ?: "its first category"}"
@@ -127,18 +149,18 @@ fun CategoriesScreen(
                     onClick = {
                         when {
                             combineFirst == null -> onOpen(parent.id)
-                            combinable && combineFirst != parent.id -> combineSecond = parent.id
+                            combinable && combineFirst != parent.id -> { haptics.select(); combineSecond = parent.id }
                         }
                     },
                     onLongClick = {
                         if (combinable) {
-                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            haptics.longPress()
                             combineFirst = parent.id
                         }
                     },
                 )
                 parent.children.forEach { child ->
-                    ListRow(title = child.name, leading = { CategoryIcon(child.iconKey) }, onClick = { if (combineFirst == null) onOpen(child.id) },
+                    ListRow(title = child.name, iconKey = child.iconKey, onClick = { if (combineFirst == null) onOpen(child.id) },
                         modifier = Modifier.padding(start = Space.xxl))
                 }
             }
@@ -146,7 +168,7 @@ fun CategoriesScreen(
         if (state.archived.isNotEmpty()) {
             item { Spacer(Modifier.height(Space.lg)); SectionLabel("Archived") }
             items(state.archived, key = { "a${it.id}" }) { c ->
-                ListRow(title = c.name, leading = { CategoryIcon(c.iconKey) }, onClick = { onOpen(c.id) }, trailing = { Tag("Archived") })
+                ListRow(title = c.name, iconKey = c.iconKey, onClick = { onOpen(c.id) }, trailing = { Tag("Archived") })
             }
         }
         item { Spacer(Modifier.height(Space.xxl)) }
@@ -230,7 +252,7 @@ fun CategoryEditorScreen(
                                 .selectable(selected = selected, onClick = { viewModel.onIcon(key) }, role = Role.RadioButton),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(AppIcons.forKey(key), contentDescription = key,
+                            Icon(AppIcons.forKey(key), contentDescription = AppIcons.label(key),
                                 tint = if (selected) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurface)
                         }
                     }
@@ -240,7 +262,7 @@ fun CategoryEditorScreen(
             if (!state.isNew) {
                 GhostButton(if (state.archived) "Unarchive category" else "Archive category", onClick = viewModel::toggleArchived, modifier = Modifier.fillMaxWidth())
             }
-            state.error?.let { Text(it, color = MrTheme.colors.accent, style = MaterialTheme.typography.bodyMedium) }
+            state.error?.let { Text(it, color = MrTheme.colors.danger, style = MaterialTheme.typography.bodyMedium) }
             Spacer(Modifier.height(Space.lg))
         }
         PillButton("Save", onClick = viewModel::save, enabled = state.canSave,
@@ -252,7 +274,7 @@ fun CategoryEditorScreen(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete category?") },
             text = { Text("If records, budgets or subcategories use it, it will be archived instead so nothing is lost.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; viewModel.delete() }) { Text("Delete", color = MrTheme.colors.accent) } },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; viewModel.delete() }) { Text("Delete", color = MrTheme.colors.danger) } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }

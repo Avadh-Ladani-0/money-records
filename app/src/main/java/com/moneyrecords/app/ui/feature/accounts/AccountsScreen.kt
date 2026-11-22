@@ -37,7 +37,10 @@ import com.moneyrecords.app.ui.components.PillButton
 import com.moneyrecords.app.ui.components.ScreenHeader
 import com.moneyrecords.app.ui.components.SectionLabel
 import com.moneyrecords.app.ui.components.SettingsAction
-import com.moneyrecords.app.ui.components.dotGrid
+import com.moneyrecords.app.domain.money.Money
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.draw.clip
 import com.moneyrecords.app.ui.icons.AppIcons
 import com.moneyrecords.app.ui.theme.MrTheme
 import com.moneyrecords.app.ui.theme.Space
@@ -59,7 +62,7 @@ fun AccountsScreen(
         item {
             ScreenHeader(
                 title = "Accounts",
-                eyebrow = "Cash, bank & cards",
+                subtitle = "Cash, bank & cards",
                 actions = {
                     IconButton(onClick = onAddAccount) { Icon(Icons.Outlined.Add, contentDescription = "Add account") }
                     SettingsAction(onOpenSettings)
@@ -78,23 +81,14 @@ fun AccountsScreen(
             return@LazyColumn
         }
 
-        item {
-            MrCard {
-                Column(Modifier.dotGrid(MrTheme.colors.dotGrid)) {
-                    SectionLabel("Total across accounts")
-                    Spacer(Modifier.height(Space.sm))
-                    HeroAmount(
-                        paise = state.total,
-                        style = MaterialTheme.typography.displayMedium,
-                        color = if (state.total < 0) MrTheme.colors.negative else MaterialTheme.colorScheme.onBackground,
-                    )
-                }
-            }
-            Spacer(Modifier.height(Space.xl))
+        // Home already shows the big balance; here one compact line, and the accounts are the hero.
+        if (!state.loading) item(key = "summary") {
+            Summary(state)
+            Spacer(Modifier.height(Space.lg))
         }
 
         items(state.active, key = { it.id }) { account ->
-            AccountRow(account, onClick = { onOpenAccount(account.id) })
+            AccountRow(account, state.flows[account.id], onClick = { onOpenAccount(account.id) }, modifier = Modifier.animateItem())
         }
 
         if (state.archived.isNotEmpty()) {
@@ -116,25 +110,56 @@ fun AccountsScreen(
             }
             if (showArchived) {
                 items(state.archived, key = { it.id }) { account ->
-                    AccountRow(account, onClick = { onOpenAccount(account.id) })
+                    AccountRow(account, null, onClick = { onOpenAccount(account.id) }, modifier = Modifier.animateItem())
                 }
             }
         }
-        item { Spacer(Modifier.height(96.dp)) }
+        item { Spacer(Modifier.height(Space.fabClearance)) }
     }
 }
 
 @Composable
-private fun AccountRow(account: Account, onClick: () -> Unit) {
+private fun Summary(state: AccountsState) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(horizontal = Space.lg, vertical = Space.md),
+    ) {
+        SummaryFigure("Assets", state.assets, MaterialTheme.colorScheme.onBackground, Modifier.weight(1f))
+        SummaryFigure("Owed", state.owed, if (state.owed > 0) MrTheme.colors.expense else MaterialTheme.colorScheme.onBackground, Modifier.weight(1f))
+        SummaryFigure("Net", state.total, if (state.total < 0) MrTheme.colors.negative else MaterialTheme.colorScheme.onBackground, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SummaryFigure(label: String, paise: Long, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
+    Column(modifier) {
+        SectionLabel(label)
+        AmountText(paise, color = color, animate = true)
+    }
+}
+
+@Composable
+private fun AccountRow(account: Account, flow: AccountFlow?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val monthLine = flow?.let { "In ${Money.format(it.inflow)} · Out ${Money.format(it.outflow)} this month" }
     ListRow(
         title = account.name,
-        subtitle = account.type.label() + if (account.archived) " · Archived" else "",
+        subtitle = listOfNotNull(account.type.label(), "Archived".takeIf { account.archived }, monthLine).joinToString(" · "),
+        subtitleLines = 2,
         icon = AppIcons.forKey(account.iconKey),
         onClick = onClick,
+        modifier = modifier,
+        spokenText = buildString {
+            append("${account.name}, ${account.type.label()}, balance ${Money.spoken(account.balance)}")
+            flow?.let { append(", in ${Money.spoken(it.inflow)}, out ${Money.spoken(it.outflow)} this month") }
+        },
         trailing = {
             AmountText(
                 paise = account.balance,
                 color = if (account.balance < 0) MrTheme.colors.negative else MaterialTheme.colorScheme.onBackground,
+                animate = true,
             )
         },
     )

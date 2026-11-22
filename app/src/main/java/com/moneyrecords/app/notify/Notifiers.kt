@@ -31,11 +31,15 @@ object Notifications {
     const val CHANNEL_BUDGETS = "budgets"
     const val CHANNEL_RECURRING = "recurring"
     const val CHANNEL_REMINDERS = "reminders"
+    const val CHANNEL_BACKUP = "backup"
+    const val ACTION_OPEN_BACKUP = "com.moneyrecords.app.action.OPEN_BACKUP"
 
     // Activity actions (handled by MainActivity).
     const val ACTION_OPEN_BUDGETS = "com.moneyrecords.app.action.OPEN_BUDGETS"
     const val ACTION_EDIT_DUE = "com.moneyrecords.app.action.EDIT_DUE"
     const val ACTION_ADD_RECORD = "com.moneyrecords.app.action.ADD_RECORD"
+    const val ACTION_OPEN_HOME = "com.moneyrecords.app.action.OPEN_HOME"
+    const val EXTRA_KIND = "kind"
     // Broadcast actions (handled by NotificationActionReceiver).
     const val ACTION_RECURRING_ADD = "com.moneyrecords.app.action.RECURRING_ADD"
     const val ACTION_RECURRING_SKIP = "com.moneyrecords.app.action.RECURRING_SKIP"
@@ -44,6 +48,7 @@ object Notifications {
     fun dueId(ruleId: Long) = 100_000 + ruleId.toInt()
     fun upcomingId(ruleId: Long) = 200_000 + ruleId.toInt()
     const val DAILY_ID = 3001
+    const val BACKUP_ID = 4001
 
     fun canNotify(context: Context): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
@@ -58,6 +63,8 @@ object Notifications {
                 .apply { description = "Recurring records that are due, and bills due tomorrow" },
             NotificationChannel(CHANNEL_REMINDERS, "Daily reminder", NotificationManager.IMPORTANCE_DEFAULT)
                 .apply { description = "A daily nudge to log your spending" },
+            NotificationChannel(CHANNEL_BACKUP, "Backups", NotificationManager.IMPORTANCE_LOW)
+                .apply { description = "Problems with automatic backups" },
         ).forEach { if (manager.getNotificationChannel(it.id) == null) manager.createNotificationChannel(it) }
     }
 
@@ -188,5 +195,19 @@ class BudgetAlertNotifier @Inject constructor(@ApplicationContext private val co
             .setContentIntent(Notifications.activityIntent(context, Notifications.ACTION_OPEN_BUDGETS, 8))
             .build()
         Notifications.post(context, ("${progress.budget.target}").hashCode(), n)
+    }
+}
+
+/** "Automatic backup failed" — the folder was moved, deleted or its access removed. */
+@Singleton
+class BackupNotifier @Inject constructor(@ApplicationContext private val context: Context) {
+    fun showFolderLost() {
+        val open = Notifications.activityIntent(context, Notifications.ACTION_OPEN_BACKUP, 9)
+        val n = Notifications.builder(context, Notifications.CHANNEL_BACKUP)
+            .setContentTitle("Automatic backup didn't run")
+            .setContentText("MoneyRecords can't reach the backup folder. Tap to pick it again.")
+            .setContentIntent(open)
+            .build()
+        Notifications.post(context, Notifications.BACKUP_ID, n)
     }
 }

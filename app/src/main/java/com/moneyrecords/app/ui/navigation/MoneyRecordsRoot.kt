@@ -1,7 +1,22 @@
 package com.moneyrecords.app.ui.navigation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.foundation.background
+import androidx.navigation.NavGraphBuilder
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.runtime.mutableIntStateOf
+import com.moneyrecords.app.ui.feature.settings.AppearanceScreen
+import com.moneyrecords.app.ui.feature.settings.BackupScreen
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -47,7 +62,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -73,6 +87,35 @@ private enum class Tab(val route: Any, val routeClass: KClass<*>, val item: Bott
 private fun NavDestination?.isOn(routeClass: KClass<*>) =
     this?.hierarchy?.any { it.hasRoute(routeClass) } == true
 
+/**
+ * A destination drawn on a solid background, so a screen sliding over another during a
+ * transition (or a swipe-back) is never see-through.
+ */
+private inline fun <reified T : Any> NavGraphBuilder.screen(noinline content: @Composable () -> Unit) {
+    composable<T> {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { content() }
+    }
+}
+
+/** How a screen arrives: tabs crossfade, editors rise from the bottom, settings pages slide in. */
+private enum class Motion { TAB, EDITOR, PAGE }
+
+private val editorRoutes = listOf(
+    RecordEditorRoute::class, AccountEditorRoute::class, CategoryEditorRoute::class, RecurringEditorRoute::class,
+)
+
+private fun NavDestination.motion(): Motion = when {
+    Tab.entries.any { isOn(it.routeClass) } -> Motion.TAB
+    editorRoutes.any { isOn(it) } -> Motion.EDITOR
+    else -> Motion.PAGE
+}
+
+private const val ENTER_MS = 220
+private const val EXIT_MS = 200
+/** How long a leaving screen stays visible: short, so it never lingers under the new one. */
+private const val OUT_MS = 90
+private const val POP_MS = 250
+
 @Composable
 fun MoneyRecordsRoot(
     requests: Flow<AppRequest> = emptyFlow(),
@@ -82,6 +125,9 @@ fun MoneyRecordsRoot(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val destination = backStackEntry?.destination
     val selectedTab = Tab.entries.indexOfFirst { destination.isOn(it.routeClass) }
+    // Keeps the bar showing the right tab while it slides away under an editor.
+    val lastTab = remember { mutableIntStateOf(0) }
+    if (selectedTab >= 0) lastTab.intValue = selectedTab
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -95,7 +141,12 @@ fun MoneyRecordsRoot(
                     popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                     launchSingleTop = true
                 }
-                AppRequest.AddRecord -> navController.navigate(RecordEditorRoute())
+                is AppRequest.AddRecord -> navController.navigate(RecordEditorRoute(kind = request.kind.orEmpty()))
+                AppRequest.OpenBackup -> navController.navigate(BackupRoute) { launchSingleTop = true }
+                AppRequest.OpenHome -> navController.navigate(HomeRoute) {
+                    popUpTo(navController.graph.findStartDestination().id) { inclusive = false }
+                    launchSingleTop = true
+                }
                 is AppRequest.EditDue -> navController.navigate(RecordEditorRoute(fromRuleId = request.ruleId))
             }
         }
@@ -119,10 +170,10 @@ fun MoneyRecordsRoot(
             contentWindowInsets = WindowInsets(0),
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
-                if (selectedTab >= 0) {
+                AnimatedVisibility(visible = selectedTab >= 0, enter = EnterTransition.None, exit = ExitTransition.None) {
                     MrBottomBar(
                         items = Tab.entries.map { it.item },
-                        selectedIndex = selectedTab,
+                        selectedIndex = lastTab.intValue,
                         onSelect = { index ->
                             navController.navigate(Tab.entries[index].route) {
                                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -134,7 +185,11 @@ fun MoneyRecordsRoot(
                 }
             },
             floatingActionButton = {
-                if (destination.isOn(HomeRoute::class) || destination.isOn(RecordsRoute::class)) {
+                AnimatedVisibility(
+                    visible = destination.isOn(HomeRoute::class) || destination.isOn(RecordsRoute::class),
+                    enter = EnterTransition.None,
+                    exit = ExitTransition.None,
+                ) {
                     AccentFab(
                         onClick = { navController.navigate(RecordEditorRoute()) },
                         icon = Icons.Outlined.Add,
@@ -147,17 +202,19 @@ fun MoneyRecordsRoot(
                 navController = navController,
                 startDestination = HomeRoute,
                 modifier = Modifier.padding(padding),
-                enterTransition = { fadeIn() },
-                exitTransition = { fadeOut() },
+                // Instant navigation both ways, as the user asked: no slide, fade or scale.
+                enterTransition = { EnterTransition.None },
+                exitTransition = { ExitTransition.None },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { ExitTransition.None },
             ) {
                 val openSettings = { navController.navigate(SettingsRoute) { launchSingleTop = true } }
                 val openRecord: (Long) -> Unit = { id -> navController.navigate(RecordEditorRoute(recordId = id)) }
                 val duplicateRecord: (Long) -> Unit = { id -> navController.navigate(RecordEditorRoute(duplicateOf = id)) }
-                composable<HomeRoute> {
+                screen<HomeRoute> {
                     HomeScreen(
                         onOpenSettings = openSettings,
-                        onOpenRecord = openRecord,
-                        onDuplicateRecord = duplicateRecord,
+                        onOpenRecurring = { navController.navigate(RecurringRoute) },
                         onSeeAllRecords = {
                             navController.navigate(RecordsRoute) {
                                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -176,18 +233,18 @@ fun MoneyRecordsRoot(
                         },
                     )
                 }
-                composable<RecordsRoute> {
+                screen<RecordsRoute> {
                     RecordsScreen(onOpenSettings = openSettings, onOpenRecord = openRecord, onDuplicateRecord = duplicateRecord)
                 }
                 val showMessage: (String) -> Unit = { message -> scope.launch { snackbar.showSnackbar(message) } }
-                composable<AccountsRoute> {
+                screen<AccountsRoute> {
                     AccountsScreen(
                         onOpenSettings = openSettings,
                         onAddAccount = { navController.navigate(AccountEditorRoute()) },
                         onOpenAccount = { id -> navController.navigate(AccountEditorRoute(accountId = id)) },
                     )
                 }
-                composable<RecordEditorRoute> {
+                screen<RecordEditorRoute> {
                     RecordEditorScreen(
                         onClose = { navController.popBackStack() },
                         onDeleted = { record ->
@@ -200,11 +257,11 @@ fun MoneyRecordsRoot(
                         onOpenRecurring = { id -> navController.navigate(RecurringEditorRoute(id)) },
                     )
                 }
-                composable<AccountEditorRoute> {
+                screen<AccountEditorRoute> {
                     AccountEditorScreen(onClose = { navController.popBackStack() }, onMessage = showMessage)
                 }
-                composable<BudgetsRoute> { BudgetsScreen(onOpenSettings = openSettings) }
-                composable<SettingsRoute> {
+                screen<BudgetsRoute> { BudgetsScreen(onOpenSettings = openSettings) }
+                screen<SettingsRoute> {
                     SettingsScreen(
                         onBack = { navController.popBackStack() },
                         onOpenDesignSystem = { navController.navigate(DesignSystemRoute) },
@@ -212,9 +269,13 @@ fun MoneyRecordsRoot(
                         onOpenRecurring = { navController.navigate(RecurringRoute) },
                         onOpenNotifications = { navController.navigate(NotificationSettingsRoute) },
                         onOpenAppLock = { navController.navigate(AppLockSettingsRoute) },
+                        onOpenAppearance = { navController.navigate(AppearanceRoute) },
+                        onOpenBackup = { navController.navigate(BackupRoute) },
                     )
                 }
-                composable<CategoriesRoute> {
+                screen<AppearanceRoute> { AppearanceScreen(onBack = { navController.popBackStack() }) }
+                screen<BackupRoute> { BackupScreen(onBack = { navController.popBackStack() }, onMessage = showMessage) }
+                screen<CategoriesRoute> {
                     CategoriesScreen(
                         onBack = { navController.popBackStack() },
                         onAdd = { kind -> navController.navigate(CategoryEditorRoute(kind = kind.name)) },
@@ -222,21 +283,22 @@ fun MoneyRecordsRoot(
                         onMessage = showMessage,
                     )
                 }
-                composable<CategoryEditorRoute> {
+                screen<CategoryEditorRoute> {
                     CategoryEditorScreen(onClose = { navController.popBackStack() }, onMessage = showMessage)
                 }
-                composable<RecurringRoute> {
+                screen<RecurringRoute> {
                     RecurringScreen(onBack = { navController.popBackStack() }, onOpen = { id -> navController.navigate(RecurringEditorRoute(id)) })
                 }
-                composable<RecurringEditorRoute> { RecurringEditorScreen(onClose = { navController.popBackStack() }) }
-                composable<AppLockSettingsRoute> { AppLockSettingsScreen(onBack = { navController.popBackStack() }) }
-                composable<NotificationSettingsRoute> { NotificationSettingsScreen(onBack = { navController.popBackStack() }) }
-                composable<DesignSystemRoute> {
+                screen<RecurringEditorRoute> { RecurringEditorScreen(onClose = { navController.popBackStack() }) }
+                screen<AppLockSettingsRoute> { AppLockSettingsScreen(onBack = { navController.popBackStack() }) }
+                screen<NotificationSettingsRoute> { NotificationSettingsScreen(onBack = { navController.popBackStack() }) }
+                screen<DesignSystemRoute> {
                     DesignSystemScreen(onBack = { navController.popBackStack() })
                 }
             }
         }
         }
+        // On every screen, the record editor included (it slides away while the keyboard is open).
         calculator?.takeIf { it.enabled && !locked }?.let { prefs ->
             QuickCalculatorOverlay(prefs = prefs, scrollSignal = scrollSignal, onMoved = appViewModel::moveCalculator)
         }

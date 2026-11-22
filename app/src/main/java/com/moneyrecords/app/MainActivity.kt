@@ -16,7 +16,15 @@ import com.moneyrecords.app.notify.BudgetPromptNotifier
 import com.moneyrecords.app.notify.Notifications
 import com.moneyrecords.app.ui.navigation.AppRequest
 import com.moneyrecords.app.ui.navigation.MoneyRecordsRoot
+import com.moneyrecords.app.domain.repository.UserPrefsRepository
+import com.moneyrecords.app.ui.theme.AppTheme
 import com.moneyrecords.app.ui.theme.MoneyRecordsTheme
+import com.moneyrecords.app.ui.theme.schemeFor
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.graphics.toArgb
+import android.graphics.drawable.ColorDrawable
+import kotlinx.coroutines.flow.map
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -27,6 +35,7 @@ import javax.inject.Inject
 class MainActivity : FragmentActivity() {
     @Inject lateinit var budgetPrompt: BudgetPromptNotifier
     @Inject lateinit var appLock: AppLockManager
+    @Inject lateinit var prefs: UserPrefsRepository
 
     /** Requests from notifications (open Budgets, add a record, edit a due recurring item). */
     private val requests = Channel<AppRequest>(Channel.BUFFERED)
@@ -45,9 +54,15 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+        val themes = prefs.observeTheme().map { key -> AppTheme.entries.firstOrNull { it.name == key } ?: AppTheme.NOTHING }
+        val requestFlow = requests.receiveAsFlow()
         setContent {
-            MoneyRecordsTheme {
-                MoneyRecordsRoot(requests = requests.receiveAsFlow())
+            val theme by themes.collectAsState(initial = null)
+            val current = theme ?: return@setContent
+            // Window background follows the theme so transitions and the keyboard never flash black/grey.
+            window.setBackgroundDrawable(ColorDrawable(schemeFor(current).background.toArgb()))
+            MoneyRecordsTheme(current) {
+                MoneyRecordsRoot(requests = requestFlow)
             }
         }
     }
@@ -63,7 +78,10 @@ class MainActivity : FragmentActivity() {
                 budgetPrompt.dismiss()
                 requests.trySend(AppRequest.OpenBudgets)
             }
-            Notifications.ACTION_ADD_RECORD -> requests.trySend(AppRequest.AddRecord)
+            Notifications.ACTION_ADD_RECORD ->
+                requests.trySend(AppRequest.AddRecord(intent.getStringExtra(Notifications.EXTRA_KIND)))
+            Notifications.ACTION_OPEN_HOME -> requests.trySend(AppRequest.OpenHome)
+            Notifications.ACTION_OPEN_BACKUP -> requests.trySend(AppRequest.OpenBackup)
             Notifications.ACTION_EDIT_DUE -> {
                 val ruleId = intent.getLongExtra(Notifications.EXTRA_RULE_ID, 0L)
                 if (ruleId > 0) {

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Backspace
 import androidx.compose.material3.Icon
@@ -17,13 +16,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import android.view.HapticFeedbackConstants
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.moneyrecords.app.ui.theme.Space
 
 /** Keys the keypad can send. Operators use the display symbols (+ − × ÷). */
@@ -44,27 +42,41 @@ private val amountRows: List<List<KeypadKey>> = listOf(
     listOf(KeypadKey.Dot, KeypadKey.Digit('0'), KeypadKey.Backspace, KeypadKey.Operator('+')),
 )
 
-/** The ₹ keypad used when entering a record amount. Long-press ⌫ clears. */
+/**
+ * The ₹ keypad used when entering a record amount. Long-press ⌫ clears.
+ * [accepts] tells whether a key would change the input; refused keys give a "reject" buzz.
+ */
 @Composable
-fun AmountKeypad(onKey: (KeypadKey) -> Unit, modifier: Modifier = Modifier, keyHeight: Dp = 54.dp) {
-    KeyGrid(amountRows, onKey, modifier, keyHeight)
+fun AmountKeypad(
+    onKey: (KeypadKey) -> Unit,
+    modifier: Modifier = Modifier,
+    keyHeight: Dp = 54.dp,
+    accepts: (KeypadKey) -> Boolean = { true },
+) {
+    KeyGrid(amountRows, onKey, modifier, keyHeight, accepts)
 }
 
 /** Generic key grid shared by the amount keypad and the floating calculator. */
 @Composable
-fun KeyGrid(rows: List<List<KeypadKey>>, onKey: (KeypadKey) -> Unit, modifier: Modifier = Modifier, keyHeight: Dp = 54.dp) {
+fun KeyGrid(
+    rows: List<List<KeypadKey>>,
+    onKey: (KeypadKey) -> Unit,
+    modifier: Modifier = Modifier,
+    keyHeight: Dp = 54.dp,
+    accepts: (KeypadKey) -> Boolean = { true },
+) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
         rows.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                row.forEach { key -> Key(key, onKey, Modifier.weight(1f).height(keyHeight)) }
+                row.forEach { key -> Key(key, onKey, accepts, Modifier.weight(1f).heightIn(min = keyHeight)) }
             }
         }
     }
 }
 
 @Composable
-private fun Key(key: KeypadKey, onKey: (KeypadKey) -> Unit, modifier: Modifier) {
-    val view = LocalView.current
+private fun Key(key: KeypadKey, onKey: (KeypadKey) -> Unit, accepts: (KeypadKey) -> Boolean, modifier: Modifier) {
+    val haptics = rememberHaptics()
     val isOperator = key is KeypadKey.Operator || key is KeypadKey.Percent || key is KeypadKey.Equals || key is KeypadKey.Clear
     val label = when (key) {
         is KeypadKey.Digit -> key.char.toString()
@@ -78,7 +90,11 @@ private fun Key(key: KeypadKey, onKey: (KeypadKey) -> Unit, modifier: Modifier) 
     val description = when (key) {
         KeypadKey.Backspace -> "Delete"
         is KeypadKey.Operator -> when (key.symbol) { '+' -> "Plus"; '−' -> "Minus"; '×' -> "Times"; else -> "Divide" }
-        else -> label ?: ""
+        KeypadKey.Dot -> "Decimal point"
+        KeypadKey.Percent -> "Percent"
+        KeypadKey.Equals -> "Equals"
+        KeypadKey.Clear -> "Clear"
+        is KeypadKey.Digit -> key.char.toString()
     }
     Box(
         modifier
@@ -88,15 +104,17 @@ private fun Key(key: KeypadKey, onKey: (KeypadKey) -> Unit, modifier: Modifier) 
                 else MaterialTheme.colorScheme.surfaceContainerHigh,
             )
             .combinedClickable(
+                role = Role.Button,
                 onClick = {
-                    // Keyboard-tap vibration on every key; follows the phone's touch-feedback setting.
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    // A tap on every key; a refused key (third decimal, too long) buzzes differently.
+                    if (accepts(key)) haptics.tick() else haptics.reject()
                     onKey(key)
                 },
                 onLongClick = if (key == KeypadKey.Backspace) ({
-                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    haptics.longPress()
                     onKey(KeypadKey.Clear)
                 }) else null,
+                onLongClickLabel = if (key == KeypadKey.Backspace) "Clear" else null,
             )
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
@@ -104,8 +122,7 @@ private fun Key(key: KeypadKey, onKey: (KeypadKey) -> Unit, modifier: Modifier) 
         if (label != null) {
             Text(
                 label,
-                fontSize = 24.sp,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium),
                 color = when {
                     key == KeypadKey.Equals -> MaterialTheme.colorScheme.background
                     isOperator -> MaterialTheme.colorScheme.onSurfaceVariant

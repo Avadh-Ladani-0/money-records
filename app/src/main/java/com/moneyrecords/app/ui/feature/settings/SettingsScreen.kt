@@ -11,14 +11,12 @@ import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.EventRepeat
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.CurrencyRupee
-import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.SettingsBackupRestore
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.getValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -30,7 +28,7 @@ import com.moneyrecords.app.BuildConfig
 import com.moneyrecords.app.ui.components.ListRow
 import com.moneyrecords.app.ui.components.ScreenHeader
 import com.moneyrecords.app.ui.components.SectionLabel
-import com.moneyrecords.app.ui.components.Tag
+import com.moneyrecords.app.ui.components.SwitchRow
 import com.moneyrecords.app.ui.theme.Space
 
 @Composable
@@ -41,9 +39,12 @@ fun SettingsScreen(
     onOpenRecurring: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenAppLock: () -> Unit,
+    onOpenAppearance: () -> Unit,
+    onOpenBackup: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val calculatorEnabled by viewModel.calculatorEnabled.collectAsStateWithLifecycle()
+    val theme by viewModel.theme.collectAsStateWithLifecycle()
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.lg),
@@ -55,7 +56,7 @@ fun SettingsScreen(
             ListRow(title = "Currency", subtitle = "Indian rupee", icon = Icons.Outlined.CurrencyRupee, trailing = { Value("₹ INR") })
         }
         item {
-            ListRow(title = "Appearance", subtitle = "Follows system", icon = Icons.Outlined.DarkMode, trailing = { Tag("Soon") })
+            ListRow(title = "Appearance", subtitle = "${theme.label} theme", icon = Icons.Outlined.Palette, onClick = onOpenAppearance)
         }
         item {
             ListRow(title = "Categories", subtitle = "Add, rename, nest or archive", icon = Icons.Outlined.Category, onClick = onOpenCategories)
@@ -67,18 +68,12 @@ fun SettingsScreen(
             ListRow(title = "Notifications", subtitle = "Due items, reminders, budget alerts", icon = Icons.Outlined.Notifications, onClick = onOpenNotifications)
         }
         item {
-            ListRow(
+            SwitchRow(
                 title = "Floating calculator",
-                subtitle = "Quick calculator bubble on every screen",
+                subtitle = "A slim handle on the right edge of every screen",
                 icon = Icons.Outlined.Calculate,
-                onClick = { viewModel.setCalculatorEnabled(!calculatorEnabled) },
-                trailing = {
-                    Switch(
-                        checked = calculatorEnabled,
-                        onCheckedChange = viewModel::setCalculatorEnabled,
-                        colors = SwitchDefaults.colors(checkedTrackColor = MrTheme.colors.accent),
-                    )
-                },
+                checked = calculatorEnabled,
+                onCheckedChange = viewModel::setCalculatorEnabled,
             )
         }
 
@@ -87,12 +82,15 @@ fun SettingsScreen(
             ListRow(title = "App lock", subtitle = "Fingerprint, face or phone screen lock", icon = Icons.Outlined.Lock, onClick = onOpenAppLock)
         }
         item {
-            ListRow(title = "Backup & restore", subtitle = "Save your data to a file", icon = Icons.Outlined.SettingsBackupRestore, trailing = { Tag("Soon") })
+            ListRow(title = "Backup & restore", subtitle = "Save your data to a file, or restore it", icon = Icons.Outlined.SettingsBackupRestore, onClick = onOpenBackup)
         }
 
         item { Spacer(Modifier.height(Space.xl)); SectionLabel("About") }
-        item {
-            ListRow(title = "Design system", subtitle = "Preview colours, type and components", icon = Icons.Outlined.GridView, onClick = onOpenDesignSystem)
+        // A developer page: only in debug builds.
+        if (BuildConfig.DEBUG) {
+            item {
+                ListRow(title = "Design system", subtitle = "Preview colours, type and components", icon = Icons.Outlined.GridView, onClick = onOpenDesignSystem)
+            }
         }
         item {
             ListRow(title = "Version", subtitle = "MoneyRecords", icon = Icons.Outlined.Info, trailing = { Value(BuildConfig.VERSION_NAME) })

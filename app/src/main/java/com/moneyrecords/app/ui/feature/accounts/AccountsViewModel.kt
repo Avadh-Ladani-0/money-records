@@ -8,6 +8,14 @@ import com.moneyrecords.app.domain.model.AccountType
 import com.moneyrecords.app.domain.model.DeleteOutcome
 import com.moneyrecords.app.domain.money.Money
 import com.moneyrecords.app.domain.repository.AccountRepository
+import com.moneyrecords.app.domain.model.RecordDetails
+import com.moneyrecords.app.domain.model.RecordFilter
+import com.moneyrecords.app.domain.model.RecordKind
+import com.moneyrecords.app.domain.repository.RecordRepository
+import com.moneyrecords.app.domain.time.MonthRange
+import kotlinx.coroutines.flow.combine
+import java.time.Clock
+import java.time.YearMonth
 import com.moneyrecords.app.ui.navigation.RouteArgs
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
@@ -22,21 +30,62 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Money into and out of one account this month (transfers count on both sides). */
+data class AccountFlow(val inflow: Long = 0, val outflow: Long = 0)
+
 data class AccountsState(
     val loading: Boolean = true,
     val active: List<Account> = emptyList(),
     val archived: List<Account> = emptyList(),
     val total: Long = 0,
+    /** Sum of balances above zero. */
+    val assets: Long = 0,
+    /** Sum of balances below zero, as a positive figure (cards in debt). */
+    val owed: Long = 0,
+    val flows: Map<Long, AccountFlow> = emptyMap(),
 )
 
-@HiltViewModel
-class AccountsViewModel @Inject constructor(repository: AccountRepository) : ViewModel() {
-    val state: StateFlow<AccountsState> = repository.observeAccounts(includeArchived = true)
-        .map { all ->
-            val active = all.filterNot { it.archived }
-            AccountsState(loading = false, active = active, archived = all.filter { it.archived }, total = active.sumOf { it.balance })
+/** Per-account in/out for the given records: income and transfers in vs expenses and transfers out. */
+fun accountFlows(records: List<RecordDetails>): Map<Long, AccountFlow> {
+    val inflow = mutableMapOf<Long, Long>()
+    val outflow = mutableMapOf<Long, Long>()
+    records.forEach { d ->
+        val r = d.record
+        when (r.kind) {
+            RecordKind.INCOME -> inflow.merge(r.accountId, r.amount, Long::plus)
+            RecordKind.EXPENSE -> outflow.merge(r.accountId, r.amount, Long::plus)
+            RecordKind.TRANSFER -> {
+                outflow.merge(r.accountId, r.amount, Long::plus)
+                r.toAccountId?.let { inflow.merge(it, r.amount, Long::plus) }
+            }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AccountsState())
+    }
+    return (inflow.keys + outflow.keys).associateWith { AccountFlow(inflow[it] ?: 0, outflow[it] ?: 0) }
+}
+
+@HiltViewModel
+class AccountsViewModel @Inject constructor(
+    repository: AccountRepository,
+    records: RecordRepository,
+    clock: Clock,
+) : ViewModel() {
+    private val month = YearMonth.now(clock)
+
+    val state: StateFlow<AccountsState> = combine(
+        repository.observeAccounts(includeArchived = true),
+        records.observeRecords(RecordFilter(range = MonthRange.of(month, clock.zone), limit = 5_000)),
+    ) { all, monthRecords ->
+        val active = all.filterNot { it.archived }
+        AccountsState(
+            loading = false,
+            active = active,
+            archived = all.filter { it.archived },
+            total = active.sumOf { it.balance },
+            assets = active.filter { it.balance > 0 }.sumOf { it.balance },
+            owed = -active.filter { it.balance < 0 }.sumOf { it.balance },
+            flows = accountFlows(monthRecords),
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AccountsState())
 }
 
 fun AccountType.label(): String = when (this) {

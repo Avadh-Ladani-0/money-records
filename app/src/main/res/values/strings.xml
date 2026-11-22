@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">MoneyRecords</string>
+    <string name="widget_quick_add_name">Quick add</string>
+    <string name="widget_quick_add_description">Add an expense, income or transfer in one tap</string>
+    <string name="widget_month_summary_name">This month</string>
+    <string name="widget_month_summary_description">Balance and this month\'s in, out and budget</string>
+    <string name="widget_budgets_name">Budgets</string>
+    <string name="widget_budgets_description">Every budget and what\'s left this month</string>
 </resources>

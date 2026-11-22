@@ -16,13 +16,21 @@ import kotlinx.serialization.Serializable
 /**
  * recordId > 0 edits; duplicateOf > 0 pre-fills a new record from an existing one;
  * fromRuleId > 0 pre-fills from a due recurring item and confirms it on save.
+ * kind (a RecordKind name, "" = remembered default) starts a new record as that type.
  */
-@Serializable data class RecordEditorRoute(val recordId: Long = 0, val duplicateOf: Long = 0, val fromRuleId: Long = 0)
+@Serializable data class RecordEditorRoute(
+    val recordId: Long = 0,
+    val duplicateOf: Long = 0,
+    val fromRuleId: Long = 0,
+    val kind: String = "",
+)
 
 @Serializable data object RecurringRoute
 @Serializable data class RecurringEditorRoute(val ruleId: Long)
 @Serializable data object NotificationSettingsRoute
 @Serializable data object AppLockSettingsRoute
+@Serializable data object AppearanceRoute
+@Serializable data object BackupRoute
 
 @Serializable data class AccountEditorRoute(val accountId: Long = 0)
 

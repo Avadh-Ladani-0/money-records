@@ -48,7 +48,7 @@ fun DesignSystemScreen(onBack: () -> Unit) {
         contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.lg),
         verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        item { ScreenHeader(title = "Design system", eyebrow = "MoneyRecords", onBack = onBack) }
+        item { ScreenHeader(title = "Design system", subtitle = "MoneyRecords", onBack = onBack) }
 
         item { SectionLabel("Colour") }
         item {

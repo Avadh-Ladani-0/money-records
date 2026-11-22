@@ -23,6 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.moneyrecords.app.ui.theme.MrTheme
 import com.moneyrecords.app.ui.theme.Space
@@ -55,7 +57,10 @@ fun MrTextField(
             focusedBorderColor = MaterialTheme.colorScheme.onBackground,
             unfocusedBorderColor = MaterialTheme.colorScheme.outline,
             focusedLabelColor = MaterialTheme.colorScheme.onBackground,
-            cursorColor = MrTheme.colors.accent,
+            cursorColor = MaterialTheme.colorScheme.onBackground,
+            errorBorderColor = MrTheme.colors.danger,
+            errorLabelColor = MrTheme.colors.danger,
+            errorSupportingTextColor = MrTheme.colors.danger,
         ),
     )
 }
@@ -71,12 +76,13 @@ fun ChoiceChip(
     /** Custom leading content (e.g. a combined-category icon); used instead of [icon]. */
     leading: (@Composable () -> Unit)? = null,
 ) {
+    val haptics = rememberHaptics()
     FilterChip(
         selected = selected,
-        onClick = onClick,
+        onClick = { haptics.select(); onClick() },
         label = { Text(text, style = MaterialTheme.typography.labelLarge) },
         modifier = modifier,
-        leadingIcon = leading ?: icon?.let { { Icon(it, contentDescription = null, modifier = Modifier.padding(start = 2.dp)) } },
+        leadingIcon = leading ?: icon?.let { { Icon(it, contentDescription = null, modifier = Modifier.padding(start = Space.xs / 2)) } },
         shape = CircleShape,
         colors = FilterChipDefaults.filterChipColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -116,11 +122,12 @@ fun EditorTopBar(
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = Space.sm),
+                .padding(horizontal = Space.sm)
+                .semantics { heading() },
         )
         if (onDelete != null) {
             IconButton(onClick = onDelete) {
-                Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete", tint = MrTheme.colors.accent)
+                Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete", tint = MrTheme.colors.danger)
             }
         }
     }

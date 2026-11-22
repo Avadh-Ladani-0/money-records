@@ -1,5 +1,16 @@
 package com.moneyrecords.app.ui.feature.records
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Column
+import com.moneyrecords.app.ui.components.rememberHaptics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,6 +78,7 @@ fun RecordsScreen(
     viewModel: RecordsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val haptics = rememberHaptics()
     val q = state.query
     var searching by rememberSaveable { mutableStateOf(false) }
     var showFilters by rememberSaveable { mutableStateOf(false) }
@@ -87,9 +99,16 @@ fun RecordsScreen(
                         if (!searching) viewModel.setSearch("")
                     }) { Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, contentDescription = if (searching) "Close search" else "Search") }
                     Box {
-                        IconButton(onClick = { showFilters = true }) { Icon(Icons.Outlined.FilterList, contentDescription = "Filters") }
+                        val filtersLabel = if (q.filterCount > 0) "Filters, ${q.filterCount} active" else "Filters"
+                        IconButton(onClick = { showFilters = true }) { Icon(Icons.Outlined.FilterList, contentDescription = filtersLabel) }
                         if (q.filterCount > 0) {
-                            Box(Modifier.align(Alignment.TopEnd).padding(10.dp).size(8.dp).background(MrTheme.colors.accent, CircleShape))
+                            Box(
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(Space.md)
+                                    .size(8.dp)
+                                    .background(MaterialTheme.colorScheme.onBackground, CircleShape),
+                            )
                         }
                     }
                     SettingsAction(onOpenSettings)
@@ -97,9 +116,13 @@ fun RecordsScreen(
             )
         }
 
-        if (searching) item {
-            MrTextField(value = q.search, onValueChange = viewModel::setSearch, label = "Search notes, categories, accounts")
-            Spacer(Modifier.height(Space.md))
+        item(key = "search") {
+            AnimatedVisibility(visible = searching, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                Column {
+                    MrTextField(value = q.search, onValueChange = viewModel::setSearch, label = "Search notes, categories, accounts")
+                    Spacer(Modifier.height(Space.md))
+                }
+            }
         }
 
         // Period: month switcher, or the custom range with a clear button.
@@ -107,7 +130,23 @@ fun RecordsScreen(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (q.range == null) {
                     IconButton(onClick = viewModel::previousMonth) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = "Previous month") }
-                    Text(q.month.format(monthFormat), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    // Slides in the direction you moved.
+                    AnimatedContent(
+                        targetState = state.shownMonth,
+                        transitionSpec = {
+                            val dir = if (targetState > initialState) 1 else -1
+                            (slideInHorizontally { w -> dir * w / 3 } + fadeIn()).togetherWith(slideOutHorizontally { w -> -dir * w / 3 } + fadeOut())
+                        },
+                        modifier = Modifier.weight(1f),
+                        label = "month",
+                    ) { month ->
+                        Text(
+                            month.format(monthFormat),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
                     IconButton(onClick = viewModel::nextMonth) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = "Next month") }
                 } else {
                     Text(
@@ -124,14 +163,14 @@ fun RecordsScreen(
             MrCard {
                 Row(horizontalArrangement = Arrangement.spacedBy(Space.lg)) {
                     Total("In", state.income, MrTheme.colors.positive, Modifier.weight(1f))
-                    Total("Out", state.expense, MrTheme.colors.negative, Modifier.weight(1f))
-                    Total("Net", state.net, MaterialTheme.colorScheme.onBackground, Modifier.weight(1f), signed = true)
+                    Total("Out", state.expense, MrTheme.colors.expense, Modifier.weight(1f))
+                    Total("Net", state.net, if (state.net >= 0) MrTheme.colors.positive else MrTheme.colors.expense, Modifier.weight(1f), signed = true)
                 }
             }
             Spacer(Modifier.height(Space.md))
         }
 
-        if (q.filterCount > 0) item {
+        if (q.filterCount > 0) item(key = "active-filters") {
             ActiveFilters(state, onClearKind = { viewModel.setKind(null) }, onClearAccounts = viewModel::clearAccounts,
                 onClearCategories = viewModel::clearCategories, onClearRange = { viewModel.setRange(null) }, onReset = viewModel::resetFilters)
             Spacer(Modifier.height(Space.sm))
@@ -149,7 +188,8 @@ fun RecordsScreen(
         state.days.forEach { day ->
             item(key = "day-${day.date}") {
                 Row(
-                    Modifier.fillMaxWidth().padding(top = Space.lg, bottom = Space.xs),
+                    // Lines up with the row amounts below (rows have Space.xs inner padding).
+                    Modifier.animateItem().fillMaxWidth().padding(start = Space.xs, end = Space.xs, top = Space.lg, bottom = Space.xs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SectionLabel(day.date.friendly(), Modifier.weight(1f))
@@ -167,12 +207,13 @@ fun RecordsScreen(
                 RecordItem(
                     details = details,
                     onClick = { onOpenRecord(details.record.id) },
-                    onLongClick = { onDuplicateRecord(details.record.id) },
+                    onLongClick = { haptics.longPress(); onDuplicateRecord(details.record.id) },
                     zone = zone,
+                    modifier = Modifier.animateItem(),
                 )
             }
         }
-        item { Spacer(Modifier.height(96.dp)) }
+        item { Spacer(Modifier.height(Space.fabClearance)) }
     }
 
     if (showFilters) {
@@ -184,7 +225,7 @@ fun RecordsScreen(
 private fun Total(label: String, paise: Long, color: androidx.compose.ui.graphics.Color, modifier: Modifier, signed: Boolean = false) {
     Column(modifier) {
         SectionLabel(label)
-        AmountText(paise, color = color, sign = if (signed) Money.Sign.ALWAYS else Money.Sign.NEGATIVE_ONLY, style = MaterialTheme.typography.titleSmall)
+        AmountText(paise, color = color, sign = if (signed) Money.Sign.ALWAYS else Money.Sign.NEGATIVE_ONLY, style = MaterialTheme.typography.titleSmall, animate = true)
     }
 }
 

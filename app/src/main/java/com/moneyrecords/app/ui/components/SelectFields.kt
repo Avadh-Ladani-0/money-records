@@ -115,6 +115,9 @@ fun AccountDropdown(
             modifier = Modifier.heightIn(max = 360.dp),
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
+            if (accounts.isEmpty()) {
+                DropdownMenuItem(text = { Text("No accounts yet", color = MaterialTheme.colorScheme.onSurfaceVariant) }, onClick = { expanded = false }, enabled = false)
+            }
             accounts.forEach { account ->
                 DropdownMenuItem(
                     text = {
@@ -220,7 +223,7 @@ fun CategoryPickerSheet(
                             ListRow(
                                 title = category.name,
                                 subtitle = parent?.name?.let { "in $it" },
-                                leading = { CategoryIcon(category.iconKey) },
+                                iconKey = category.iconKey,
                                 onClick = { pick(category.id) },
                                 trailing = if (category.id == selectedId) ({ Icon(Icons.Outlined.Check, contentDescription = "Selected") }) else null,
                             )

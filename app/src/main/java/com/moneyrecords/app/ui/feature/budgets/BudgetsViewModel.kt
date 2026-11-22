@@ -85,7 +85,8 @@ class BudgetsViewModel @Inject constructor(
             month = m,
             today = LocalDate.now(clock),
             loading = overview.month != m,
-            overview = overview.takeIf { it.month == m },
+            // Keep showing the previous month until the new one arrives, so the screen never blanks.
+            overview = overview,
             mainCategories = tree.filterNot { ComboIcon.isCombo(it.iconKey) },
             accounts = accountList,
         )

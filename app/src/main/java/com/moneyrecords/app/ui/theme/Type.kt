@@ -65,6 +65,6 @@ internal val MrTypography = Typography(
     bodySmall = inter(12, 400, 16),
     labelLarge = inter(14, 600, 20, 0.1),
     // Small labels are rendered uppercase with wide tracking (see SectionLabel).
-    labelMedium = inter(12, 500, 16, 1.4),
-    labelSmall = inter(10, 500, 14, 1.4),
+    labelMedium = inter(12, 600, 16, 1.2),
+    labelSmall = inter(12, 500, 16, 1.0),
 )

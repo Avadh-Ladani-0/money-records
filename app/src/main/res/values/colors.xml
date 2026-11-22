@@ -1,5 +1,5 @@
 <resources>
-    <color name="mr_window_bg">#FFF4F4F2</color>
+    <color name="mr_window_bg">#FF000000</color>
     <color name="mr_splash_bg">#FF000000</color>
     <color name="ic_launcher_background">#FF000000</color>
 </resources>

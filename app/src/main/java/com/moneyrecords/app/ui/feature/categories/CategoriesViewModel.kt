@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class CategoriesState(
+    val loading: Boolean = true,
     val kind: CategoryKind = CategoryKind.EXPENSE,
     val active: List<Category> = emptyList(),
     /** Archived categories (and archived subcategories of active parents), flattened. */
@@ -42,6 +43,7 @@ class CategoriesViewModel @Inject constructor(private val repository: CategoryRe
     val state: StateFlow<CategoriesState> = kind.flatMapLatest { k ->
         repository.observeTree(k, includeArchived = true).map { tree ->
             CategoriesState(
+                loading = false,
                 kind = k,
                 active = tree.filterNot { it.archived }.map { p -> p.copy(children = p.children.filterNot { it.archived }) },
                 archived = tree.flatMap { p -> if (p.archived) listOf(p) else p.children.filter { it.archived } },

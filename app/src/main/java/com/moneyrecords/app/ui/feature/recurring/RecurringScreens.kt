@@ -1,5 +1,10 @@
 package com.moneyrecords.app.ui.feature.recurring
 
+import com.moneyrecords.app.domain.insights.Insights
+import androidx.compose.ui.Alignment
+import com.moneyrecords.app.ui.components.MrCard
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -59,25 +64,61 @@ import java.time.LocalDate
 @Composable
 fun RecurringScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, viewModel: RecurringListViewModel = hiltViewModel()) {
     val rules by viewModel.rules.collectAsStateWithLifecycle()
+    val today = remember { LocalDate.now() }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.lg)) {
         item { ScreenHeader(title = "Recurring", onBack = onBack) }
-        val list = rules
-        if (list != null && list.isEmpty()) {
+        val list = rules ?: return@LazyColumn
+        if (list.isEmpty()) {
             item {
                 EmptyState(
                     title = "Nothing recurring yet",
                     message = "When adding a record, tap Repeat to make it monthly, weekly or yearly — rent, salary, subscriptions.",
                 )
             }
+            return@LazyColumn
         }
-        items(list.orEmpty(), key = { it.rule.id }) { d -> RuleRow(d, onClick = { onOpen(d.rule.id) }) }
+        // The commitment first: what all this costs a month, and what's next.
+        item(key = "summary") {
+            val monthly = Insights.monthlyCommitment(list)
+            val next = list.filter { it.rule.active }.minByOrNull { it.rule.nextRunDate }
+            MrCard(contentPadding = PaddingValues(horizontal = Space.xl, vertical = Space.lg)) {
+                SectionLabel("Recurring expenses")
+                AmountText(monthly, style = MaterialTheme.typography.headlineSmall, animate = true)
+                Text("a month on average", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                next?.let {
+                    Spacer(Modifier.height(Space.sm))
+                    Text(
+                        "Next: ${it.title} · ${it.rule.nextRunDate.friendly()}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+            Spacer(Modifier.height(Space.md))
+        }
+        val weekEnd = today.plusDays(7)
+        val monthEnd = today.withDayOfMonth(today.lengthOfMonth())
+        val active = list.filter { it.rule.active }.sortedBy { it.rule.nextRunDate }
+        val groups = listOf(
+            "This week" to active.filter { !it.rule.nextRunDate.isAfter(weekEnd) },
+            "Later this month" to active.filter { it.rule.nextRunDate.isAfter(weekEnd) && !it.rule.nextRunDate.isAfter(monthEnd) },
+            "Later" to active.filter { it.rule.nextRunDate.isAfter(monthEnd) && it.rule.nextRunDate.isAfter(weekEnd) },
+            "Paused or ended" to list.filterNot { it.rule.active },
+        )
+        groups.filter { it.second.isNotEmpty() }.forEach { (label, rows) ->
+            item(key = "label-$label") {
+                SectionLabel(label, Modifier.animateItem().padding(top = Space.lg, bottom = Space.xs))
+            }
+            items(rows, key = { it.rule.id }) { d -> RuleRow(d, onClick = { onOpen(d.rule.id) }, modifier = Modifier.animateItem()) }
+        }
+        item { Spacer(Modifier.height(Space.xxl)) }
     }
 }
 
 @Composable
-private fun RuleRow(d: RecurringRuleDetails, onClick: () -> Unit) {
+private fun RuleRow(d: RecurringRuleDetails, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val r = d.rule
     val ended = !r.active && r.endDate != null && r.nextRunDate.isAfter(r.endDate)
+    val isTransfer = r.kind == RecordKind.TRANSFER
     ListRow(
         title = d.title,
         subtitle = listOf(
@@ -89,21 +130,26 @@ private fun RuleRow(d: RecurringRuleDetails, onClick: () -> Unit) {
             },
             d.accountName,
         ).joinToString(" · "),
-        leading = {
-            if (r.kind == RecordKind.TRANSFER) Icon(Icons.AutoMirrored.Outlined.CompareArrows, contentDescription = null)
-            else CategoryIcon(d.categoryIconKey)
-        },
+        subtitleLines = 2,
+        icon = if (isTransfer) Icons.AutoMirrored.Outlined.CompareArrows else null,
+        iconKey = if (isTransfer) null else d.categoryIconKey ?: "other",
         onClick = onClick,
+        modifier = modifier,
         trailing = {
-            if (!r.active) Tag(if (ended) "Ended" else "Paused") else AmountText(
-                if (r.kind == RecordKind.EXPENSE) -r.amount else r.amount,
-                sign = if (r.kind == RecordKind.TRANSFER) Money.Sign.NONE else Money.Sign.ALWAYS,
-                color = when (r.kind) {
-                    RecordKind.EXPENSE -> MrTheme.colors.negative
-                    RecordKind.INCOME -> MrTheme.colors.positive
-                    RecordKind.TRANSFER -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
+            // The amount always shows; a paused or ended item is marked, not hidden.
+            Column(horizontalAlignment = Alignment.End) {
+                AmountText(
+                    if (r.kind == RecordKind.EXPENSE) -r.amount else r.amount,
+                    sign = if (isTransfer) Money.Sign.NONE else Money.Sign.ALWAYS,
+                    color = when {
+                        !r.active -> MaterialTheme.colorScheme.onSurfaceVariant
+                        r.kind == RecordKind.EXPENSE -> MrTheme.colors.expense
+                        r.kind == RecordKind.INCOME -> MrTheme.colors.positive
+                        else -> MrTheme.colors.transfer
+                    },
+                )
+                if (!r.active) Tag(if (ended) "Ended" else "Paused")
+            }
         },
     )
 }
@@ -123,10 +169,12 @@ fun RecurringEditorScreen(onClose: () -> Unit, viewModel: RecurringEditorViewMod
             verticalArrangement = Arrangement.spacedBy(Space.lg),
         ) {
             state.details?.let { d ->
+                val isTransfer = d.rule.kind == RecordKind.TRANSFER
                 ListRow(
                     title = d.title,
-                    subtitle = if (d.rule.kind == RecordKind.TRANSFER) "${d.accountName} → ${d.toAccountName}" else d.accountName,
-                    leading = { CategoryIcon(d.categoryIconKey) },
+                    subtitle = if (isTransfer) "${d.accountName} → ${d.toAccountName}" else d.accountName,
+                    icon = if (isTransfer) Icons.AutoMirrored.Outlined.CompareArrows else null,
+                    iconKey = if (isTransfer) null else d.categoryIconKey ?: "other",
                 )
             }
             MrTextField(
@@ -149,7 +197,7 @@ fun RecurringEditorScreen(onClose: () -> Unit, viewModel: RecurringEditorViewMod
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             GhostButton(if (state.active) "Pause" else "Resume", onClick = viewModel::togglePaused, modifier = Modifier.fillMaxWidth())
-            state.error?.let { Text(it, color = MrTheme.colors.accent) }
+            state.error?.let { Text(it, color = MrTheme.colors.danger) }
             Spacer(Modifier.height(Space.lg))
         }
         PillButton("Save", onClick = viewModel::save, enabled = state.canSave,
@@ -169,7 +217,7 @@ fun RecurringEditorScreen(onClose: () -> Unit, viewModel: RecurringEditorViewMod
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete recurring item?") },
             text = { Text("Records it already added stay as they are.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; viewModel.delete() }) { Text("Delete", color = MrTheme.colors.accent) } },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; viewModel.delete() }) { Text("Delete", color = MrTheme.colors.danger) } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }

@@ -8,7 +8,8 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 - **Design**: minimalist monochrome with a single red accent and dot-matrix numbers, in light and dark themes.
 
 > Status: early development (v0.1.0). Accounts, records, the Records tab with filters and search,
-> categories, monthly budgets, recurring records, reminders, app lock and a floating calculator work.
+> categories, monthly budgets, recurring records, reminders, app lock, backup & restore, home-screen widgets,
+> two themes and a floating calculator work.
 
 ## Features so far
 
@@ -40,7 +41,20 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
   Locks on a fresh start and after time away (Immediately · 30 s · 1 min · 5 min, default 1 min).
   Optionally hides the app's content in recent apps (also blocks screenshots). Notifications never
   show amounts on the phone's lock screen. Settings → App lock.
-- **Floating calculator**: draggable bubble on every screen with a Copy button; can be turned off in Settings.
+- **Home**: balance and this month's In / Out / Net, budget status (the overall budget and the one closest
+  to its limit), recurring items due and coming up, and where the money went (top categories).
+- **Backup & restore** (free): one `.json` file with everything — save it anywhere with "Back up now", or
+  turn on a weekly backup into a folder you pick (keeps the newest 5). Optional password (AES-256-GCM).
+  Restore shows what the file holds first, keeps a safety copy of your current data, and changes nothing
+  if it fails.
+- **Widgets**: Quick add (Expense / Income / Transfer + today's spend), This month (balance, In / Out /
+  Net, budget) and Budgets. They follow the app theme and hide amounts while App lock is on.
+- **Appearance**: **Nothing** (pure black, red only for alarms) or **Graphite** (soft grey; colour for
+  income, spending, transfers and each category). Budget status is always white / yellow (80%+) / red (over).
+- **Polish**: instant navigation, haptics throughout, amounts read aloud in words by screen readers,
+  48dp touch targets, and layouts that hold at large font sizes and in landscape.
+- **Floating calculator**: a slim handle on the right edge of every screen with a Copy button; can be
+  turned off in Settings.
 
 ## Roadmap
 
@@ -52,9 +66,9 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 | 4 | Budgets: overall, per-category and "everything else" monthly limits, carry-forward, progress | ✅ Done |
 | 5 | Recurring records and reminders (+ budget alerts) | ✅ Done |
 | 6 | App lock with the phone's screen lock, privacy in recents and on the lock screen | ✅ Done |
-| 7 | Home-screen widget | ⏳ Next |
-| 8 | Backup & restore to a file (free) | Planned |
-| 9 | Polish: motion, haptics, accessibility | Planned |
+| 7 | Home-screen widgets (Quick add, This month, Budgets) | ✅ Done |
+| 8 | Backup & restore to a file (free), weekly auto-backup, optional password | ✅ Done |
+| 9 | Polish: Nothing / Graphite themes, Home redesign, haptics, accessibility | ✅ Done |
 
 After v1: analytics dashboard, CSV/Excel/PDF export and more features.
 

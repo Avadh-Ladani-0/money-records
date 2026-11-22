@@ -61,6 +61,22 @@ object AppIcons {
     val accountKeys: List<String> = listOf("cash", "bank", "card", "wallet")
     val categoryKeys: List<String> = byKey.keys.filterNot { it in accountKeys }
 
+    private val labels = mapOf(
+        "food" to "Food", "groceries" to "Groceries", "transport" to "Bus", "fuel" to "Fuel",
+        "shopping" to "Shopping bag", "bills" to "Bill", "rent" to "Home", "health" to "Hospital",
+        "education" to "School", "entertainment" to "Film", "travel" to "Plane", "personal" to "Spa",
+        "gift" to "Gift", "other" to "Shapes", "salary" to "Briefcase", "business" to "Business",
+        "interest" to "Piggy bank", "refund" to "Refund", "cash" to "Cash", "bank" to "Bank",
+        "card" to "Card", "wallet" to "Wallet",
+    )
+
+    /** Spoken name of an icon, for screen readers ("Piggy bank", not "interest"). */
+    fun label(key: String?): String {
+        val parts = ComboIcon.parts(key)
+        if (parts != null) return "${label(parts.first)} and ${label(parts.second)}"
+        return key?.let(labels::get) ?: "Shapes"
+    }
+
     /** For a combined key this returns the first icon; use CategoryIcon to draw both. */
     fun forKey(key: String?): ImageVector {
         val plain = ComboIcon.parts(key)?.first ?: key

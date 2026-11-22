@@ -1,5 +1,14 @@
 package com.moneyrecords.app.ui.feature.budgets
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.text.style.TextOverflow
+import com.moneyrecords.app.ui.components.AmountText
+import com.moneyrecords.app.ui.icons.CategoryBadge
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -105,16 +114,30 @@ fun BudgetsScreen(
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = viewModel::previousMonth) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = "Previous month") }
-                Text(state.month.format(monthFormat), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                val shown = overview?.month ?: state.month
+                AnimatedContent(
+                    targetState = shown,
+                    transitionSpec = {
+                        val dir = if (targetState > initialState) 1 else -1
+                        (slideInHorizontally { w -> dir * w / 3 } + fadeIn()).togetherWith(slideOutHorizontally { w -> -dir * w / 3 } + fadeOut())
+                    },
+                    modifier = Modifier.weight(1f),
+                    label = "budgetMonth",
+                ) { month ->
+                    Text(month.format(monthFormat), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                }
                 IconButton(onClick = viewModel::nextMonth) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = "Next month") }
             }
             Spacer(Modifier.height(Space.sm))
         }
 
         if (overview != null && overview.isEmpty) {
-            item {
+            item(key = "empty") {
+                val unbudgeted = overview.suggestions.sumOf { it.spent }
                 EmptyState(
-                    title = "No budgets for ${state.month.format(monthFormat)}",
+                    // Lead with the real figure: what's being spent with no limit on it.
+                    title = if (unbudgeted > 0) "${Money.format(unbudgeted)} spent with no budget"
+                    else "No budgets for ${overview.month.format(monthFormat)}",
                     message = "Set a monthly limit. It carries on to the following months until you change it.",
                     glyph = Glyphs.Chart,
                     action = {
@@ -128,7 +151,7 @@ fun BudgetsScreen(
         }
 
         overview?.overall?.let { overall ->
-            item {
+            item(key = "overall") {
                 OverallCard(overall, perDay = state.perDay(overall), onClick = { editor = EditorRequest(overall.budget.target, overall) })
                 Spacer(Modifier.height(Space.xl))
             }
@@ -145,20 +168,20 @@ fun BudgetsScreen(
         if (overview != null && (overview.categories.isNotEmpty() || overview.rest != null)) {
             item { SectionLabel("Categories"); Spacer(Modifier.height(Space.sm)) }
             items(overview.categories, key = { "c${it.budget.categoryId}" }) { p ->
-                BudgetRow(p, perDay = state.perDay(p), onClick = { editor = EditorRequest(p.budget.target, p) })
+                BudgetRow(p, perDay = state.perDay(p), onClick = { editor = EditorRequest(p.budget.target, p) }, modifier = Modifier.animateItem())
             }
             overview.rest?.let { rest ->
-                item(key = "rest") { BudgetRow(rest, perDay = state.perDay(rest), onClick = { editor = EditorRequest(rest.budget.target, rest) }) }
+                item(key = "rest") { BudgetRow(rest, perDay = state.perDay(rest), onClick = { editor = EditorRequest(rest.budget.target, rest) }, modifier = Modifier.animateItem()) }
             }
         }
 
         if (overview != null && (overview.accounts.isNotEmpty() || overview.otherAccounts != null)) {
             item { Spacer(Modifier.height(Space.lg)); SectionLabel("By account"); Spacer(Modifier.height(Space.sm)) }
             items(overview.accounts, key = { "a${it.budget.accountId}" }) { p ->
-                BudgetRow(p, perDay = state.perDay(p), onClick = { editor = EditorRequest(p.budget.target, p) })
+                BudgetRow(p, perDay = state.perDay(p), onClick = { editor = EditorRequest(p.budget.target, p) }, modifier = Modifier.animateItem())
             }
             overview.otherAccounts?.let { other ->
-                item(key = "otherAccounts") { BudgetRow(other, perDay = state.perDay(other), onClick = { editor = EditorRequest(other.budget.target, other) }) }
+                item(key = "otherAccounts") { BudgetRow(other, perDay = state.perDay(other), onClick = { editor = EditorRequest(other.budget.target, other) }, modifier = Modifier.animateItem()) }
             }
         }
 
@@ -168,13 +191,14 @@ fun BudgetsScreen(
                 ListRow(
                     title = s.name,
                     subtitle = Money.format(s.spent) + " spent this month",
-                    leading = { CategoryIcon(s.iconKey) },
+                    iconKey = s.iconKey,
                     onClick = { editor = EditorRequest(BudgetTarget.category(s.categoryId), null) },
-                    trailing = { Text("Add", style = MaterialTheme.typography.labelLarge, color = MrTheme.colors.accent) },
+                    modifier = Modifier.animateItem(),
+                    trailing = { Text("Set budget", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onBackground) },
                 )
             }
         }
-        item { Spacer(Modifier.height(96.dp)) }
+        item { Spacer(Modifier.height(Space.fabClearance)) }
     }
 
     editor?.let { request ->
@@ -211,8 +235,8 @@ fun BudgetIcon(p: BudgetProgress, size: androidx.compose.ui.unit.Dp = 20.dp) {
 @Composable
 private fun StatusTag(p: BudgetProgress) {
     when {
-        p.isOver -> Tag("Over", color = MrTheme.colors.accent)
-        p.isNearLimit -> Tag("${(p.fraction * 100).toInt()}% used", color = MrTheme.colors.accent)
+        p.isOver -> Tag("Over", color = MrTheme.colors.over)
+        p.isNearLimit -> Tag("${(p.fraction * 100).toInt()}% used", color = MrTheme.colors.warning)
     }
 }
 
@@ -228,10 +252,16 @@ private fun OverallCard(p: BudgetProgress, perDay: Long?, onClick: () -> Unit) {
             HeroAmount(
                 paise = if (p.isOver) -p.remaining else p.remaining,
                 style = MaterialTheme.typography.displayMedium,
-                color = if (p.isOver) MrTheme.colors.negative else MaterialTheme.colorScheme.onBackground,
+                color = statusColor(p),
+                animate = true,
             )
             Spacer(Modifier.height(Space.lg))
-            DotProgress(p.fraction, dotSize = 10.dp)
+            DotProgress(
+                p.fraction,
+                dotSize = 10.dp,
+                activeColor = statusColor(p),
+                spoken = "${Money.spoken(p.spent)} of ${Money.spoken(p.budget.limit)}",
+            )
             Spacer(Modifier.height(Space.md))
             Row {
                 Text(
@@ -252,25 +282,27 @@ private fun OverallCard(p: BudgetProgress, perDay: Long?, onClick: () -> Unit) {
 }
 
 @Composable
-private fun BudgetRow(p: BudgetProgress, perDay: Long?, onClick: () -> Unit) {
+private fun BudgetRow(p: BudgetProgress, perDay: Long?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick)
+            .clickable(onClick = onClick, onClickLabel = "Edit budget")
             .padding(vertical = Space.md, horizontal = Space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(40.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                BudgetIcon(p)
+            // Same badge and spacing as every other list row.
+            if (p.budget.scope == BudgetScope.CATEGORY) {
+                CategoryBadge(p.categoryIconKey ?: "other")
+            } else {
+                Box(Modifier.size(44.dp).background(MrTheme.colors.badge, CircleShape), contentAlignment = Alignment.Center) {
+                    BudgetIcon(p, size = 22.dp)
+                }
             }
-            Spacer(Modifier.width(Space.md))
+            Spacer(Modifier.width(Space.lg))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                    Text(p.label(), style = MaterialTheme.typography.bodyLarge)
+                    Text(p.label(), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     StatusTag(p)
                 }
                 val sub = buildList {
@@ -280,17 +312,34 @@ private fun BudgetRow(p: BudgetProgress, perDay: Long?, onClick: () -> Unit) {
                     if (perDay != null && !p.isOver) add("${Money.format(perDay)}/day")
                     if (p.offset > 0) add("${Money.format(p.offset)} counted back")
                 }
-                Text(sub.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(sub.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(Money.format(p.spent), style = MaterialTheme.typography.titleSmall,
-                    color = if (p.isOver) MrTheme.colors.negative else MaterialTheme.colorScheme.onBackground)
+                AmountText(
+                    p.spent,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = statusColor(p),
+                    animate = true,
+                )
                 Text("of ${Money.format(p.budget.limit)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(Space.sm))
-        DotProgress(p.fraction, dotSize = 6.dp)
+        DotProgress(
+            p.fraction,
+            dotSize = 6.dp,
+            activeColor = statusColor(p),
+            spoken = "${p.label()}, ${Money.spoken(p.spent)} of ${Money.spoken(p.budget.limit)}",
+        )
     }
+}
+
+/** Every budget status uses three colours: white (fine), yellow (80%+ used), red (over). */
+@Composable
+fun statusColor(p: BudgetProgress): androidx.compose.ui.graphics.Color = when {
+    p.isOver -> MrTheme.colors.over
+    p.isNearLimit -> MrTheme.colors.warning
+    else -> MaterialTheme.colorScheme.onBackground
 }
 
 /** "1 category", "3 categories"; "1 account", "2 accounts". */

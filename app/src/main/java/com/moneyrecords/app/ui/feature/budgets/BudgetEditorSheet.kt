@@ -75,6 +75,7 @@ fun BudgetEditorSheet(
     /** Called after a successful save (e.g. to ask for notification permission). */
     onSaved: () -> Unit = {},
 ) {
+    val haptics = com.moneyrecords.app.ui.components.rememberHaptics()
     val monthName = remember(state.month) { state.month.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())) }
     var target by remember { mutableStateOf(existing?.budget?.target ?: initialTarget) }
     // The full list of targets is shown only while choosing; once picked it collapses to one row.
@@ -131,11 +132,14 @@ fun BudgetEditorSheet(
                         selected = target == BudgetTarget.Rest, taken = BudgetTarget.Rest in budgeted,
                         onClick = { pick(BudgetTarget.Rest) },
                     )
+                    val spentByCategory = state.overview?.suggestions.orEmpty().associate { it.categoryId to it.spent }
                     state.mainCategories.forEach { c ->
                         val t = BudgetTarget.category(c.id)
                         TargetRow(
-                            title = c.name, subtitle = null,
-                            leading = { CategoryIcon(c.iconKey) },
+                            title = c.name,
+                            // Set the limit against real numbers: what this category has used so far.
+                            subtitle = spentByCategory[c.id]?.let { "${Money.format(it)} spent this month" },
+                            iconKey = c.iconKey,
                             selected = target == t, taken = t in budgeted,
                             onClick = { pick(t) },
                         )
@@ -181,14 +185,14 @@ fun BudgetEditorSheet(
                         BudgetScope.ACCOUNT -> "Expenses + transfers out"
                         else -> null
                     },
-                    leading = {
+                    iconKey = if (t?.scope == BudgetScope.CATEGORY) category?.iconKey ?: "other" else null,
+                    leading = if (t?.scope == BudgetScope.CATEGORY) null else ({
                         when (t?.scope) {
-                            BudgetScope.CATEGORY -> CategoryIcon(category?.iconKey)
                             BudgetScope.ACCOUNT -> Icon(AppIcons.forKey(account?.iconKey), contentDescription = null)
                             BudgetScope.REST, BudgetScope.OTHER_ACCOUNTS -> Icon(Icons.Outlined.MoreHoriz, contentDescription = null)
                             else -> Icon(Icons.Outlined.PieChart, contentDescription = null)
                         }
-                    },
+                    }),
                     trailing = { TextButton(onClick = { choosing = true }) { Text("Change", color = MaterialTheme.colorScheme.onBackground) } },
                 )
             } else {
@@ -227,7 +231,7 @@ fun BudgetEditorSheet(
                     onToggle = { id -> picked = if (id in picked) picked - id else picked + id },
                 )
             }
-            error?.let { Text(it, color = MrTheme.colors.accent, style = MaterialTheme.typography.bodyMedium) }
+            error?.let { Text(it, color = MrTheme.colors.danger, style = MaterialTheme.typography.bodyMedium) }
 
             PillButton(
                 text = "Save",
@@ -235,7 +239,7 @@ fun BudgetEditorSheet(
                 onClick = {
                     val t = target ?: return@PillButton
                     viewModel.save(t, Money.parse(amount), offsets = if (existing != null) picked else null) { e ->
-                        if (e == null) { onSaved(); onDismiss() } else error = e
+                        if (e == null) { haptics.confirm(); onSaved(); onDismiss() } else { haptics.reject(); error = e }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -243,7 +247,7 @@ fun BudgetEditorSheet(
             if (existing != null) {
                 GhostButton(
                     text = "Stop this budget from $monthName",
-                    onClick = { viewModel.stop(existing.budget.target); onDismiss() },
+                    onClick = { haptics.confirm(); viewModel.stop(existing.budget.target); onDismiss() },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -267,7 +271,7 @@ private fun CountBackSection(
     Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionLabel("Count back this month", Modifier.weight(1f))
-            if (total > 0) Text("− ${Money.format(total)}", style = MaterialTheme.typography.labelLarge, color = MrTheme.colors.positive)
+            if (total > 0) Text("${Money.format(total)} counted back", style = MaterialTheme.typography.labelLarge, color = MrTheme.colors.positive)
         }
         Text(
             if (accountBased) "Selected income or transfers into this account reduce what's counted as spent."
@@ -316,7 +320,8 @@ private fun CountBackSection(
 private fun TargetRow(
     title: String,
     subtitle: String?,
-    leading: @Composable () -> Unit,
+    leading: (@Composable () -> Unit)? = null,
+    iconKey: String? = null,
     selected: Boolean,
     taken: Boolean,
     onClick: () -> Unit,
@@ -325,10 +330,11 @@ private fun TargetRow(
         title = title,
         subtitle = subtitle,
         leading = leading,
+        iconKey = iconKey,
         onClick = if (taken) null else onClick,
         trailing = when {
             taken -> ({ Tag("Has budget") })
-            selected -> ({ Icon(Icons.Outlined.Check, contentDescription = "Selected", tint = MrTheme.colors.accent) })
+            selected -> ({ Icon(Icons.Outlined.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.onBackground) })
             else -> null
         },
     )

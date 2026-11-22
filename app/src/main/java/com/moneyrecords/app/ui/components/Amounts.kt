@@ -1,6 +1,15 @@
 package com.moneyrecords.app.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -21,7 +30,14 @@ import com.moneyrecords.app.domain.money.Money
 import com.moneyrecords.app.ui.theme.InterFamily
 import com.moneyrecords.app.ui.theme.TabularNums
 
-/** An amount in running text or a list row. */
+/** Rolls a changed figure: a higher value comes in from below, a lower one from above. */
+private fun rollSpec(up: Boolean): ContentTransform {
+    val dir = if (up) 1 else -1
+    return (slideInVertically(tween(280)) { h -> dir * h / 2 } + fadeIn(tween(280)))
+        .togetherWith(slideOutVertically(tween(200)) { h -> -dir * h / 2 } + fadeOut(tween(200)))
+}
+
+/** An amount in running text or a list row. [animate] rolls it when the value changes. */
 @Composable
 fun AmountText(
     paise: Long,
@@ -29,14 +45,34 @@ fun AmountText(
     style: TextStyle = MaterialTheme.typography.titleMedium,
     sign: Money.Sign = Money.Sign.NEGATIVE_ONLY,
     color: Color = Color.Unspecified,
+    animate: Boolean = false,
 ) {
-    Text(
-        text = Money.format(paise, sign = sign),
-        modifier = modifier,
-        style = style.copy(fontFeatureSettings = TabularNums),
-        color = color,
-        maxLines = 1,
-    )
+    val spoken = Modifier.semantics { contentDescription = Money.spoken(paise) }
+    if (!animate) {
+        Text(
+            text = Money.format(paise, sign = sign),
+            modifier = modifier.then(spoken),
+            style = style.copy(fontFeatureSettings = TabularNums),
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        return
+    }
+    AnimatedContent(
+        targetState = paise,
+        transitionSpec = { rollSpec(targetState > initialState) },
+        modifier = modifier.then(spoken),
+        label = "amountRoll",
+    ) { value ->
+        Text(
+            text = Money.format(value, sign = sign),
+            style = style.copy(fontFeatureSettings = TabularNums),
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 /**
@@ -49,7 +85,18 @@ fun HeroAmount(
     modifier: Modifier = Modifier,
     style: TextStyle = MaterialTheme.typography.displayLarge,
     color: Color = LocalContentColor.current,
+    /** Roll to the new figure when it changes (balances on Home and Accounts). */
+    animate: Boolean = false,
 ) {
+    if (animate) {
+        AnimatedContent(
+            targetState = paise,
+            transitionSpec = { rollSpec(targetState > initialState) },
+            modifier = modifier,
+            label = "heroRoll",
+        ) { value -> HeroAmount(value, style = style, color = color, animate = false) }
+        return
+    }
     val parts = Money.parts(paise, alwaysShowPaise = true)
     val text = buildAnnotatedString {
         // ₹ comes from Inter (Doto has no rupee glyph); raise it to sit with the dot digits.
@@ -64,7 +111,7 @@ fun HeroAmount(
     }
     BasicText(
         text = text,
-        modifier = modifier.semantics { contentDescription = Money.format(paise) },
+        modifier = modifier.semantics { contentDescription = Money.spoken(paise) },
         style = style.copy(color = color),
         maxLines = 1,
         autoSize = TextAutoSize.StepBased(

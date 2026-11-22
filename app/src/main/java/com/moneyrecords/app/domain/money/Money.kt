@@ -75,4 +75,17 @@ object Money {
         val fraction = if (p.paise.isEmpty()) "" else ".${p.paise}"
         return "${p.sign}${p.symbol}${p.rupees}$fraction"
     }
+
+    /**
+     * How a screen reader should say an amount: "1,502 rupees", "minus 179 rupees",
+     * "12 rupees 50 paise". Symbols like "−₹" are read badly by TalkBack, so lists use this.
+     */
+    fun spoken(paise: Long): String {
+        val abs = kotlin.math.abs(paise)
+        val rupees = groupIndian((abs / 100).toString())
+        val p = abs % 100
+        val main = if (abs / 100 == 1L) "1 rupee" else "$rupees rupees"
+        val text = if (p == 0L) main else "$main $p paise"
+        return if (paise < 0) "minus $text" else text
+    }
 }

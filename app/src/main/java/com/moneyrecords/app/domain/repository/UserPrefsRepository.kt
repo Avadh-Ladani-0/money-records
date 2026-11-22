@@ -30,6 +30,23 @@ data class NotificationPrefs(
     val monthStartBudgets: Boolean = true,
 )
 
+/**
+ * Backup settings. [folderUri] is the folder picked for automatic backups (a persisted
+ * document-tree permission). [wrappedPassword] is the optional backup password, encrypted with a
+ * key that never leaves the phone's keystore — needed so weekly backups can be encrypted unattended.
+ */
+data class BackupPrefs(
+    val autoEnabled: Boolean = false,
+    val folderUri: String? = null,
+    val folderName: String? = null,
+    val lastBackupAtMillis: Long? = null,
+    /** null = never run, "ok", or a short error such as "Folder no longer available". */
+    val lastResult: String? = null,
+    val wrappedPassword: String? = null,
+) {
+    val hasPassword: Boolean get() = wrappedPassword != null
+}
+
 interface UserPrefsRepository {
     suspend fun recordDefaults(kind: RecordKind): RecordDefaults
     suspend fun rememberRecordDefaults(kind: RecordKind, defaults: RecordDefaults)
@@ -50,6 +67,13 @@ interface UserPrefsRepository {
 
     fun observeAppLock(): Flow<AppLockPrefs>
     suspend fun updateAppLock(change: (AppLockPrefs) -> AppLockPrefs)
+
+    /** Appearance: the chosen theme's key ("NOTHING" / "GRAPHITE"). */
+    fun observeTheme(): Flow<String>
+    suspend fun setTheme(key: String)
+
+    fun observeBackup(): Flow<BackupPrefs>
+    suspend fun updateBackup(change: (BackupPrefs) -> BackupPrefs)
 
     fun observeCalculator(): Flow<CalculatorPrefs>
     suspend fun setCalculatorEnabled(enabled: Boolean)

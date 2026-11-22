@@ -122,6 +122,12 @@ class FakePrefs : UserPrefsRepository {
     override suspend fun setLastBudgetPrompt(month: YearMonth) { lastPrompt = month }
     override suspend fun recordDefaults(kind: RecordKind) = defaults[kind] ?: RecordDefaults()
     override suspend fun rememberRecordDefaults(kind: RecordKind, defaults: RecordDefaults) { this.defaults[kind] = defaults }
+    val theme = MutableStateFlow("NOTHING")
+    override fun observeTheme(): Flow<String> = theme
+    override suspend fun setTheme(key: String) { theme.value = key }
+    val backup = MutableStateFlow(com.moneyrecords.app.domain.repository.BackupPrefs())
+    override fun observeBackup() = backup
+    override suspend fun updateBackup(change: (com.moneyrecords.app.domain.repository.BackupPrefs) -> com.moneyrecords.app.domain.repository.BackupPrefs) = backup.update(change)
     override fun observeCalculator(): Flow<CalculatorPrefs> = calculator
     override suspend fun setCalculatorEnabled(enabled: Boolean) = calculator.update { it.copy(enabled = enabled) }
     override suspend fun setCalculatorPosition(x: Float, y: Float) = calculator.update { it.copy(x = x, y = y) }

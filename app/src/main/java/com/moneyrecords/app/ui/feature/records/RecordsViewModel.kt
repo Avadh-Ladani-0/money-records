@@ -58,6 +58,9 @@ data class RecordsState(
     /** Totals of everything currently shown (respects all filters). */
     val income: Long = 0,
     val expense: Long = 0,
+    /** The month the shown records belong to (lags [query] until its results arrive, so the
+     *  title never sits over another month's records). */
+    val shownMonth: YearMonth = query.month,
     val accounts: List<Account> = emptyList(),
     val expenseCategories: List<Category> = emptyList(),
     val incomeCategories: List<Category> = emptyList(),
@@ -85,10 +88,11 @@ class RecordsViewModel @Inject constructor(
         accounts.observeAccounts(includeArchived = true),
         categories.observeTree(CategoryKind.EXPENSE, includeArchived = false),
         categories.observeTree(CategoryKind.INCOME, includeArchived = false),
-    ) { q, (_, list), accountList, expenseTree, incomeTree ->
+    ) { q, (shown, list), accountList, expenseTree, incomeTree ->
         RecordsState(
             query = q,
             loading = false,
+            shownMonth = shown.month,
             days = groupByDay(list),
             income = list.filter { it.record.kind == RecordKind.INCOME }.sumOf { it.record.amount },
             expense = list.filter { it.record.kind == RecordKind.EXPENSE }.sumOf { it.record.amount },

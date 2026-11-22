@@ -304,3 +304,29 @@ interface BudgetOffsetDao {
 
     @Insert suspend fun insertAll(offsets: List<BudgetOffsetEntity>)
 }
+
+/** Whole-table reads and writes for backup & restore. */
+@Dao
+interface BackupDao {
+    @Query("SELECT * FROM accounts ORDER BY id") suspend fun accounts(): List<AccountEntity>
+    @Query("SELECT * FROM categories ORDER BY id") suspend fun categories(): List<CategoryEntity>
+    @Query("SELECT * FROM recurring_rules ORDER BY id") suspend fun recurringRules(): List<RecurringRuleEntity>
+    @Query("SELECT * FROM records ORDER BY id") suspend fun records(): List<RecordEntity>
+    @Query("SELECT * FROM budgets ORDER BY id") suspend fun budgets(): List<BudgetEntity>
+    @Query("SELECT * FROM budget_offsets ORDER BY id") suspend fun budgetOffsets(): List<BudgetOffsetEntity>
+
+    // Children before parents, so foreign keys are never left dangling.
+    @Query("DELETE FROM budget_offsets") suspend fun clearBudgetOffsets()
+    @Query("DELETE FROM budgets") suspend fun clearBudgets()
+    @Query("DELETE FROM records") suspend fun clearRecords()
+    @Query("DELETE FROM recurring_rules") suspend fun clearRecurringRules()
+    @Query("DELETE FROM categories") suspend fun clearCategories()
+    @Query("DELETE FROM accounts") suspend fun clearAccounts()
+
+    @Insert suspend fun insertAccounts(rows: List<AccountEntity>)
+    @Insert suspend fun insertCategories(rows: List<CategoryEntity>)
+    @Insert suspend fun insertRecurringRules(rows: List<RecurringRuleEntity>)
+    @Insert suspend fun insertRecords(rows: List<RecordEntity>)
+    @Insert suspend fun insertBudgets(rows: List<BudgetEntity>)
+    @Insert suspend fun insertBudgetOffsets(rows: List<BudgetOffsetEntity>)
+}

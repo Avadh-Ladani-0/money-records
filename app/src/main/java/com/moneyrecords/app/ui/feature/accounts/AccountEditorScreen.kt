@@ -108,7 +108,7 @@ fun AccountEditorScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            state.error?.let { Text(it, color = MrTheme.colors.accent, style = MaterialTheme.typography.bodyMedium) }
+            state.error?.let { Text(it, color = MrTheme.colors.danger, style = MaterialTheme.typography.bodyMedium) }
             Spacer(Modifier.height(Space.lg))
         }
         PillButton(
@@ -129,7 +129,7 @@ fun AccountEditorScreen(
             text = { Text("If this account has records it will be archived instead, so your history stays intact.") },
             confirmButton = {
                 TextButton(onClick = { confirmDelete = false; viewModel.delete() }) {
-                    Text("Delete", color = MrTheme.colors.accent)
+                    Text("Delete", color = MrTheme.colors.danger)
                 }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },

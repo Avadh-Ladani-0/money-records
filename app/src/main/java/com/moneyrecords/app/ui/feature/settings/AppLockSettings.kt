@@ -37,6 +37,7 @@ import com.moneyrecords.app.security.AppLockManager
 import com.moneyrecords.app.security.canUseScreenLock
 import com.moneyrecords.app.ui.components.ChoiceChip
 import com.moneyrecords.app.ui.components.ListRow
+import com.moneyrecords.app.ui.components.SwitchRow
 import com.moneyrecords.app.ui.components.ScreenHeader
 import com.moneyrecords.app.ui.components.SectionLabel
 import com.moneyrecords.app.ui.theme.MrTheme
@@ -73,15 +74,12 @@ fun AppLockSettingsScreen(onBack: () -> Unit, viewModel: AppLockSettingsViewMode
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.lg)) {
         item { ScreenHeader(title = "App lock", onBack = onBack) }
         item {
-            ListRow(
+            SwitchRow(
                 title = "Lock with screen lock",
                 subtitle = "Fingerprint, face or your phone's PIN/pattern",
                 icon = Icons.Outlined.Fingerprint,
-                onClick = { setEnabled(!s.enabled) },
-                trailing = {
-                    Switch(checked = s.enabled, onCheckedChange = ::setEnabled,
-                        colors = SwitchDefaults.colors(checkedTrackColor = MrTheme.colors.accent))
-                },
+                checked = s.enabled,
+                onCheckedChange = ::setEnabled,
             )
         }
         if (s.enabled) {
@@ -97,15 +95,12 @@ fun AppLockSettingsScreen(onBack: () -> Unit, viewModel: AppLockSettingsViewMode
         }
         item { Spacer(Modifier.height(Space.lg)); SectionLabel("Privacy") }
         item {
-            ListRow(
+            SwitchRow(
                 title = "Hide in recent apps",
                 subtitle = "Blank preview in the app switcher; also blocks screenshots",
                 icon = Icons.Outlined.VisibilityOff,
-                onClick = { update { it.copy(hideInRecents = !s.hideInRecents) } },
-                trailing = {
-                    Switch(checked = s.hideInRecents, onCheckedChange = { on -> update { it.copy(hideInRecents = on) } },
-                        colors = SwitchDefaults.colors(checkedTrackColor = MrTheme.colors.accent))
-                },
+                checked = s.hideInRecents,
+                onCheckedChange = { on -> update { it.copy(hideInRecents = on) } },
             )
         }
         item {

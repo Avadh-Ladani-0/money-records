@@ -1,6 +1,7 @@
 package com.moneyrecords.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -81,7 +82,7 @@ fun CombineCategoryDialog(
         },
         confirmButton = {
             TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name.trim()) }) {
-                Text("Create", color = MrTheme.colors.accent)
+                Text("Create", color = MaterialTheme.colorScheme.onBackground)
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -112,7 +113,7 @@ fun QuickCategoryForm(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        AppIcons.forKey(key), contentDescription = key,
+                        AppIcons.forKey(key), contentDescription = AppIcons.label(key),
                         tint = if (selected) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -131,7 +132,7 @@ fun NewCategoryCell(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier
             .clip(MaterialTheme.shapes.medium)
-            .selectable(selected = false, onClick = onClick, role = Role.Button)
+            .clickable(onClick = onClick, role = Role.Button, onClickLabel = "New category")
             .padding(vertical = Space.sm),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

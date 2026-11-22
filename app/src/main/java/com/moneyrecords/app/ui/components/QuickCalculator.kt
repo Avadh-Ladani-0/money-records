@@ -29,7 +29,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.Icon
@@ -48,12 +47,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -77,7 +82,7 @@ private val calculatorRows: List<List<KeypadKey>> = listOf(
 )
 
 /**
- * Calculator tab docked to the right edge of the screen. Drag it up or down; its height is stored as a
+ * Calculator handle: a slim sliver on the right edge of the screen. Drag it up or down; its height is stored as a
  * fraction of the screen. It slides off-screen while content scrolls ([scrollSignal] changes) or the
  * keyboard is open, and slides back once things are idle, so it never sits over what you're reading.
  */
@@ -101,40 +106,62 @@ fun QuickCalculatorOverlay(
     }
     val hidden = scrolling || imeVisible
 
+    val haptics = rememberHaptics()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
-        val tabWidth = 34.dp
-        val tabHeight = 56.dp
+        // A slim sliver that fits inside the screen's right margin, so it never covers amounts or
+        // switches; the touch area is wider than what's drawn.
+        val touchWidth = 40.dp
+        val touchHeight = 72.dp
+        val sliverWidth = 12.dp
+        val sliverHeight = 56.dp
         val topLimit = with(density) { WindowInsets.statusBars.getTop(this).toFloat() + 8.dp.toPx() }
-        val bottomLimit = with(density) { (maxHeight - tabHeight).toPx() - WindowInsets.navigationBars.getBottom(this) - 8.dp.toPx() }
+        val bottomLimit = with(density) { (maxHeight - touchHeight).toPx() - WindowInsets.navigationBars.getBottom(this) - 8.dp.toPx() }
         var y by remember(prefs.y, topLimit, bottomLimit) {
             mutableFloatStateOf(topLimit + prefs.y * (bottomLimit - topLimit))
         }
-        val slide by animateDpAsState(if (hidden) tabWidth + 4.dp else 0.dp, label = "calcSlide")
-        val shape = RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp)
+        val step = with(density) { 64.dp.toPx() }
+        fun save() = onMoved(1f, ((y - topLimit) / (bottomLimit - topLimit)).coerceIn(0f, 1f))
+        val slide by animateDpAsState(if (hidden) touchWidth else 0.dp, label = "calcSlide")
+        val shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)
 
         Box(
             Modifier
                 .align(Alignment.TopEnd)
                 .offset { IntOffset(slide.roundToPx(), y.roundToInt()) }
-                .size(tabWidth, tabHeight)
-                .shadow(6.dp, shape)
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                .border(BorderStroke(1.dp, MrTheme.colors.hairline), shape)
+                .size(touchWidth, touchHeight)
                 .pointerInput(topLimit, bottomLimit) {
                     detectVerticalDragGestures(
-                        onDragEnd = { onMoved(1f, ((y - topLimit) / (bottomLimit - topLimit)).coerceIn(0f, 1f)) },
+                        onDragStart = { haptics.dragStart() },
+                        onDragEnd = { haptics.dragEnd(); save() },
                     ) { change, dragAmount ->
                         change.consume()
                         y = (y + dragAmount).coerceIn(topLimit, bottomLimit)
                     }
                 }
-                .clickable { open = true }
-                .semantics { contentDescription = "Calculator" },
-            contentAlignment = Alignment.Center,
+                .clickable(role = Role.Button, onClickLabel = "Open calculator") { open = true }
+                .semantics {
+                    contentDescription = "Calculator"
+                    customActions = listOf(
+                        CustomAccessibilityAction("Move up") { y = (y - step).coerceIn(topLimit, bottomLimit); save(); true },
+                        CustomAccessibilityAction("Move down") { y = (y + step).coerceIn(topLimit, bottomLimit); save(); true },
+                    )
+                },
+            contentAlignment = Alignment.CenterEnd,
         ) {
-            Icon(Icons.Outlined.Calculate, contentDescription = null, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
+            Column(
+                Modifier
+                    .size(sliverWidth, sliverHeight)
+                    .clip(shape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .border(BorderStroke(1.dp, MrTheme.colors.hairline), shape),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+            ) {
+                repeat(3) {
+                    Box(Modifier.size(4.dp).background(MaterialTheme.colorScheme.onSurfaceVariant, CircleShape))
+                }
+            }
         }
     }
 
@@ -148,6 +175,7 @@ fun QuickCalculatorOverlay(
 @Composable
 private fun QuickCalculatorCard(input: String, onInput: (String) -> Unit, onClose: () -> Unit) {
     val clipboard = LocalClipboard.current
+    val haptics = rememberHaptics()
     val scope = rememberCoroutineScope()
     var copied by remember { mutableStateOf(false) }
     val result = Expression.evaluate(input)
@@ -182,7 +210,10 @@ private fun QuickCalculatorCard(input: String, onInput: (String) -> Unit, onClos
                     style = MaterialTheme.typography.displayMedium.copy(color = MaterialTheme.colorScheme.onBackground, textAlign = TextAlign.End),
                     maxLines = 1,
                     autoSize = TextAutoSize.StepBased(minFontSize = 20.sp, maxFontSize = 44.sp, stepSize = 2.sp),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).semantics {
+                        contentDescription = "Result ${resultText ?: "none"}"
+                        liveRegion = LiveRegionMode.Polite
+                    },
                 )
                 IconButton(
                     enabled = resultText != null,
@@ -190,22 +221,29 @@ private fun QuickCalculatorCard(input: String, onInput: (String) -> Unit, onClos
                         val value = resultText ?: return@IconButton
                         scope.launch {
                             clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("Calculator result", value)))
+                            haptics.confirm()
                             copied = true
                         }
                     },
                 ) { Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy result") }
             }
+            val copiedAlpha by animateFloatAsState(if (copied) 1f else 0f, label = "copied")
             Text(
                 if (copied) "Copied $resultText" else " ",
                 style = MaterialTheme.typography.labelMedium,
-                color = MrTheme.colors.accent,
-                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer { alpha = copiedAlpha }
+                    .semantics { liveRegion = LiveRegionMode.Polite },
             )
+            val evaluate: (String) -> String? = { Expression.evaluate(it)?.let(Expression::toPlainText) }
             KeyGrid(
                 rows = calculatorRows,
-                onKey = { key -> onInput(applyKey(input, key, evaluate = { Expression.evaluate(it)?.let(Expression::toPlainText) }, allowNegative = true)) },
+                onKey = { key -> onInput(applyKey(input, key, evaluate = evaluate, allowNegative = true)) },
                 keyHeight = 52.dp,
+                accepts = { key -> key == KeypadKey.Clear || applyKey(input, key, evaluate, allowNegative = true) != input },
             )
         }
     }

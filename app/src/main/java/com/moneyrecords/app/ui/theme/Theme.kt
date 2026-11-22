@@ -1,6 +1,5 @@
 package com.moneyrecords.app.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -26,16 +25,20 @@ object Space {
     val xl = 24.dp
     val xxl = 32.dp
     val screen = 20.dp
+    /** Room left under the last list item so the add button never covers it. */
+    val fabClearance = 96.dp
+    /** Right-edge room for the floating calculator handle. */
+    val handle = 14.dp
 }
 
 @Composable
 fun MoneyRecordsTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    theme: AppTheme = AppTheme.NOTHING,
     content: @Composable () -> Unit,
 ) {
-    CompositionLocalProvider(LocalMrColors provides if (darkTheme) DarkMrColors else LightMrColors) {
+    CompositionLocalProvider(LocalMrColors provides mrColorsFor(theme)) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkScheme else LightScheme,
+            colorScheme = schemeFor(theme),
             typography = MrTypography,
             shapes = MrShapes,
             content = content,

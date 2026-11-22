@@ -1,5 +1,19 @@
 package com.moneyrecords.app.ui.feature.record
 
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.BaselineShift
+import com.moneyrecords.app.domain.money.Money
+import com.moneyrecords.app.ui.components.rememberHaptics
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import com.moneyrecords.app.domain.recurring.Recurrence
@@ -105,12 +119,14 @@ fun RecordEditorScreen(
     val askNotificationPermission = rememberNotificationPermissionRequest()
     // While the system keyboard is up (typing a note) the keypad steps aside.
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val haptics = rememberHaptics()
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
-                RecordEditorEvent.Saved -> onClose()
-                is RecordEditorEvent.Deleted -> { onDeleted(event.record); onClose() }
+                RecordEditorEvent.Saved -> { haptics.confirm(); onClose() }
+                is RecordEditorEvent.Deleted -> { haptics.confirm(); onDeleted(event.record); onClose() }
             }
         }
     }
@@ -128,9 +144,9 @@ fun RecordEditorScreen(
         )
 
         // Details. Scrolls only if the screen is very short.
+        val details: @Composable (Modifier) -> Unit = { mod ->
         Column(
-            Modifier
-                .weight(1f)
+            mod
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Space.screen),
             verticalArrangement = Arrangement.spacedBy(Space.md),
@@ -190,18 +206,22 @@ fun RecordEditorScreen(
             }
 
             MrTextField(value = state.note, onValueChange = viewModel::onNote, label = "Note")
-            state.error?.let { Text(it, color = MrTheme.colors.accent, style = MaterialTheme.typography.bodyMedium) }
+            state.error?.let { Text(it, color = MrTheme.colors.danger, style = MaterialTheme.typography.bodyMedium) }
+        }
         }
 
         // Entry: amount right above the keypad, then save.
+        val entry: @Composable (Modifier, androidx.compose.ui.unit.Dp) -> Unit = { mod, keyHeight ->
         Column(
-            Modifier
+            mod
                 .navigationBarsPadding()
                 .padding(horizontal = Space.screen, vertical = Space.sm),
             verticalArrangement = Arrangement.spacedBy(Space.sm),
         ) {
             AmountDisplay(state)
-            AnimatedVisibility(visible = !imeVisible) { AmountKeypad(onKey = viewModel::onKey) }
+            AnimatedVisibility(visible = !imeVisible) {
+                AmountKeypad(onKey = viewModel::onKey, accepts = viewModel::accepts, keyHeight = keyHeight)
+            }
             PillButton(
                 text = when (state.mode) {
                     EditorMode.EDIT -> "Save changes"
@@ -214,8 +234,22 @@ fun RecordEditorScreen(
                     viewModel.save()
                 },
                 enabled = state.canSave,
+                accent = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+        }
+
+        // Portrait: details above, amount + keypad below. Landscape: side by side, so nothing is
+        // pushed off a short screen.
+        if (landscape) {
+            Row(Modifier.weight(1f)) {
+                details(Modifier.weight(1f))
+                entry(Modifier.weight(1f).verticalScroll(rememberScrollState()), 40.dp)
+            }
+        } else {
+            details(Modifier.weight(1f))
+            entry(Modifier, 54.dp)
         }
     }
 
@@ -239,7 +273,7 @@ fun RecordEditorScreen(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete this record?") },
             text = { Text("You can undo right after deleting.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; viewModel.delete() }) { Text("Delete", color = MrTheme.colors.accent) } },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; viewModel.delete() }) { Text("Delete", color = MrTheme.colors.danger) } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
@@ -247,6 +281,10 @@ fun RecordEditorScreen(
     if (pickTime) TimeDialog(state.time, onDismiss = { pickTime = false }, onPick = { viewModel.onTime(it); pickTime = false })
 }
 
+/**
+ * The amount being typed — the answer this screen exists for, so it's the biggest thing on it.
+ * Read aloud as it changes ("Expense amount, 250 rupees").
+ */
 @Composable
 private fun AmountDisplay(state: RecordEditorState) {
     val sign = when (state.kind) {
@@ -255,26 +293,51 @@ private fun AmountDisplay(state: RecordEditorState) {
         RecordKind.TRANSFER -> "₹"
     }
     val color = when (state.kind) {
-        RecordKind.EXPENSE -> MrTheme.colors.negative
-        else -> MaterialTheme.colorScheme.onBackground
+        RecordKind.EXPENSE -> MrTheme.colors.expense
+        RecordKind.INCOME -> MrTheme.colors.positive
+        RecordKind.TRANSFER -> MrTheme.colors.transfer
     }
+    val empty = state.amountText.isEmpty()
     val text = buildAnnotatedString {
-        withStyle(SpanStyle(fontFamily = InterFamily, fontSize = 0.5.em)) { append("$sign ") }
+        withStyle(SpanStyle(fontFamily = InterFamily, fontSize = 0.45.em, baselineShift = BaselineShift(0.3f))) { append("$sign ") }
         append(state.amountText.ifEmpty { "0" })
     }
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+    val spokenAmount = state.amountPaise?.let { Money.spoken(it) } ?: if (empty) "empty" else state.amountText
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${state.kind.label()} amount, $spokenAmount" + (state.amountPaise?.takeIf { state.preview != null }?.let { ", equals ${Money.spoken(it)}" } ?: "")
+                liveRegion = LiveRegionMode.Polite
+            },
+        horizontalAlignment = Alignment.End,
+    ) {
+        // Big by default; steps down only as the figure gets long (auto-size shrank short amounts).
+        val chars = state.amountText.length
+        val size = when {
+            chars <= 6 -> 72.sp
+            chars <= 9 -> 56.sp
+            chars <= 13 -> 40.sp
+            else -> 28.sp
+        }
         BasicText(
             text = text,
-            style = MaterialTheme.typography.displayMedium.copy(
-                color = if (state.amountText.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else color,
+            style = MaterialTheme.typography.displayLarge.copy(
+                // An empty amount is a clear, readable placeholder — not a faint dotted zero.
+                color = if (empty) MaterialTheme.colorScheme.onSurfaceVariant else color,
                 textAlign = TextAlign.End,
+                fontSize = size,
+                lineHeight = size * 1.1f,
             ),
             maxLines = 1,
-            autoSize = TextAutoSize.StepBased(minFontSize = 22.sp, maxFontSize = 44.sp, stepSize = 2.sp),
             modifier = Modifier.fillMaxWidth(),
         )
-        state.preview?.let {
-            Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AnimatedVisibility(visible = state.preview != null, enter = fadeIn(), exit = fadeOut()) {
+            Text(
+                state.preview.orEmpty(),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -326,27 +389,47 @@ fun LocalDate.friendly(today: LocalDate = LocalDate.now()): String = when (this)
  */
 @Composable
 private fun RepeatRow(repeat: RepeatSpec?, recordDate: LocalDate, onTick: (Boolean) -> Unit, onEdit: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.medium)
-            .toggleable(value = repeat != null, role = Role.Checkbox, onValueChange = { onTick(it) }),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = repeat != null, onCheckedChange = null)
-        Text("Repeat", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = Space.xs))
-        if (repeat != null) {
-            Text(
-                " · " + repeat.describe(recordDate),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).clickable(onClick = onEdit),
-            )
-            IconButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, contentDescription = "Edit repeat") }
-        } else {
-            Spacer(Modifier.weight(1f))
+    val haptics = rememberHaptics()
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // The tick box and its label are one control; the details next to it are a separate one.
+        Row(
+            Modifier
+                .clip(MaterialTheme.shapes.medium)
+                .toggleable(
+                    value = repeat != null,
+                    role = Role.Checkbox,
+                    onValueChange = { haptics.toggle(it); onTick(it) },
+                )
+                .heightIn(min = 48.dp)
+                .padding(end = Space.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = repeat != null, onCheckedChange = null)
+            Text("Repeat", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = Space.xs))
+        }
+        AnimatedVisibility(visible = repeat != null, modifier = Modifier.weight(1f), enter = fadeIn(), exit = fadeOut()) {
+            Row(
+                Modifier
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable(onClickLabel = "Edit repeat", role = Role.Button, onClick = onEdit)
+                    .heightIn(min = 48.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    repeat?.describe(recordDate).orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    Icons.Outlined.Edit,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = Space.sm).size(20.dp),
+                )
+            }
         }
     }
 }

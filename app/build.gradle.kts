@@ -79,6 +79,8 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.work.runtime.ktx)
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
     implementation(libs.biometric)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.hilt.work)

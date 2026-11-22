@@ -1,5 +1,11 @@
 package com.moneyrecords.app.ui.feature.record
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import com.moneyrecords.app.ui.components.rememberHaptics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -71,6 +77,7 @@ fun RepeatSheet(current: RepeatSpec?, start: LocalDate, onDone: (RepeatSpec?) ->
     // Null = use the natural next date (follows the choices above).
     var nextDate by remember { mutableStateOf(current?.nextDate) }
     var picking by remember { mutableStateOf<String?>(null) } // "next" | "end"
+    val haptics = rememberHaptics()
 
     val spec = RepeatSpec(frequency, interval, if (once) null else endDate, nextDate, once)
     val next = spec.nextFrom(start)
@@ -86,18 +93,30 @@ fun RepeatSheet(current: RepeatSpec?, start: LocalDate, onDone: (RepeatSpec?) ->
         ) {
             Text("Repeat", style = MaterialTheme.typography.headlineSmall)
             SectionLabel("How often")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                ChoiceChip("Once on a date", selected = once, onClick = { once = true })
+            // One row that scrolls sideways — no lone chip wrapping onto a second line.
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()).selectableGroup(),
+                horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            ) {
                 listOf(Frequency.DAILY to "Daily", Frequency.WEEKLY to "Weekly", Frequency.MONTHLY to "Monthly", Frequency.YEARLY to "Yearly")
                     .forEach { (f, label) -> ChoiceChip(label, selected = !once && frequency == f, onClick = { once = false; frequency = f }) }
+                ChoiceChip("Once on a date", selected = once, onClick = { once = true })
             }
 
             if (!once) {
                 SectionLabel("Every")
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { interval = (interval - 1).coerceAtLeast(1) }) { Icon(Icons.Outlined.Remove, contentDescription = "Fewer") }
-                    Text("$interval", style = MaterialTheme.typography.titleLarge)
-                    IconButton(onClick = { interval = (interval + 1).coerceAtMost(99) }) { Icon(Icons.Outlined.Add, contentDescription = "More") }
+                    IconButton(onClick = {
+                        if (interval > 1) { haptics.tick(); interval-- } else haptics.reject()
+                    }) { Icon(Icons.Outlined.Remove, contentDescription = "Decrease interval") }
+                    Text(
+                        "$interval",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                    IconButton(onClick = {
+                        if (interval < 99) { haptics.tick(); interval++ } else haptics.reject()
+                    }) { Icon(Icons.Outlined.Add, contentDescription = "Increase interval") }
                     val unit = when (frequency) { Frequency.DAILY -> "day"; Frequency.WEEKLY -> "week"; Frequency.MONTHLY -> "month"; Frequency.YEARLY -> "year" }
                     Text(if (interval == 1) unit else "${unit}s", style = MaterialTheme.typography.bodyLarge)
                 }
@@ -124,7 +143,7 @@ fun RepeatSheet(current: RepeatSpec?, start: LocalDate, onDone: (RepeatSpec?) ->
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            PillButton("Done", onClick = { onDone(spec); onDismiss() }, modifier = Modifier.fillMaxWidth())
+            PillButton("Done", onClick = { haptics.confirm(); onDone(spec); onDismiss() }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(Space.lg))
         }
     }

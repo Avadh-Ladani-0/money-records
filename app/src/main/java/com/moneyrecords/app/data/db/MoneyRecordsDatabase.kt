@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.moneyrecords.app.domain.model.CategoryKind
 
@@ -15,7 +16,7 @@ import com.moneyrecords.app.domain.model.CategoryKind
         RecordEntity::class,
         BudgetEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class MoneyRecordsDatabase : RoomDatabase() {
@@ -27,6 +28,14 @@ abstract class MoneyRecordsDatabase : RoomDatabase() {
 
     companion object {
         const val NAME = "moneyrecords.db"
+    }
+}
+
+/** v2: budgets gain a scope (OVERALL / CATEGORY / REST). Existing rows keep their meaning. */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE budgets ADD COLUMN scope TEXT NOT NULL DEFAULT 'CATEGORY'")
+        db.execSQL("UPDATE budgets SET scope = 'OVERALL' WHERE categoryId IS NULL")
     }
 }
 

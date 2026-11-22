@@ -2,7 +2,9 @@ package com.moneyrecords.app.domain.repository
 
 import com.moneyrecords.app.domain.model.Account
 import com.moneyrecords.app.domain.model.Budget
+import com.moneyrecords.app.domain.model.BudgetOverview
 import com.moneyrecords.app.domain.model.BudgetProgress
+import com.moneyrecords.app.domain.model.BudgetTarget
 import com.moneyrecords.app.domain.model.Category
 import com.moneyrecords.app.domain.model.CategoryKind
 import com.moneyrecords.app.domain.model.DeleteOutcome
@@ -71,9 +73,14 @@ interface RecurringRepository {
 }
 
 interface BudgetRepository {
-    /** Budgets for [month] with what has been spent against each. Overall budget first. */
+    /** Budgets in effect for [month] (carried forward from earlier months) with spending against each. */
+    fun observeOverview(month: YearMonth): Flow<BudgetOverview>
+    /** Same as [observeOverview], flattened: overall, categories, then "Everything else". */
     fun observeProgress(month: YearMonth): Flow<List<BudgetProgress>>
-    /** One budget per (category, month): saving again replaces the limit. */
+    /** Sets the limit for [Budget.target] from [Budget.month] onwards (replacing one set in that same month). */
     suspend fun save(budget: Budget): Long
-    suspend fun delete(id: Long)
+    /** Ends a budget from [month] onwards; earlier months keep it. */
+    suspend fun stop(target: BudgetTarget, month: YearMonth)
+    /** What [target] would have counted as spent in [month] (e.g. "last month you spent ₹X"). */
+    suspend fun spentIn(target: BudgetTarget, month: YearMonth): Long
 }

@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
+import com.moneyrecords.app.domain.model.BudgetScope
 import com.moneyrecords.app.domain.model.CategoryKind
 import com.moneyrecords.app.domain.model.RecordKind
 import kotlinx.coroutines.flow.Flow
@@ -182,12 +183,33 @@ interface RecurringRuleDao {
 
 @Dao
 interface BudgetDao {
-    @Query("SELECT * FROM budgets WHERE yearMonth = :yearMonth")
-    fun observeForMonth(yearMonth: Int): Flow<List<BudgetEntity>>
+    /**
+     * Budgets in effect for [yearMonth]: for each (scope, category) the row with the latest month
+     * on or before it. Stop markers (limit 0) hide the budget. `IS` matches null categories.
+     */
+    @Query(
+        """
+        SELECT b.* FROM budgets b
+        WHERE b.yearMonth = (
+            SELECT MAX(b2.yearMonth) FROM budgets b2
+            WHERE b2.scope = b.scope AND b2.categoryId IS b.categoryId AND b2.yearMonth <= :yearMonth
+        )
+        AND b.limitAmount > 0
+        """,
+    )
+    fun observeEffective(yearMonth: Int): Flow<List<BudgetEntity>>
 
-    /** `IS` so that a null category (overall budget) matches too. */
-    @Query("SELECT * FROM budgets WHERE categoryId IS :categoryId AND yearMonth = :yearMonth LIMIT 1")
-    suspend fun find(categoryId: Long?, yearMonth: Int): BudgetEntity?
+    @Query("SELECT * FROM budgets WHERE scope = :scope AND categoryId IS :categoryId AND yearMonth = :yearMonth LIMIT 1")
+    suspend fun find(scope: BudgetScope, categoryId: Long?, yearMonth: Int): BudgetEntity?
+
+    /** The most recent row for this budget before [yearMonth], if any. */
+    @Query(
+        """
+        SELECT * FROM budgets WHERE scope = :scope AND categoryId IS :categoryId AND yearMonth < :yearMonth
+        ORDER BY yearMonth DESC LIMIT 1
+        """,
+    )
+    suspend fun latestBefore(scope: BudgetScope, categoryId: Long?, yearMonth: Int): BudgetEntity?
 
     @Insert suspend fun insert(budget: BudgetEntity): Long
     @Update suspend fun update(budget: BudgetEntity)

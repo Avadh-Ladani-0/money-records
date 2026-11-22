@@ -2,10 +2,12 @@ package com.moneyrecords.app.ui.feature.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.moneyrecords.app.domain.model.BudgetProgress
 import com.moneyrecords.app.domain.model.MonthSummary
 import com.moneyrecords.app.domain.model.RecordDetails
 import com.moneyrecords.app.domain.model.RecordFilter
 import com.moneyrecords.app.domain.repository.AccountRepository
+import com.moneyrecords.app.domain.repository.BudgetRepository
 import com.moneyrecords.app.domain.repository.RecordRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,12 +25,15 @@ data class HomeState(
     val summary: MonthSummary = MonthSummary(0, 0),
     val recent: List<RecordDetails> = emptyList(),
     val hasAccounts: Boolean = true,
+    /** Overall budget in effect this month, if any. */
+    val budget: BudgetProgress? = null,
 )
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     accounts: AccountRepository,
     records: RecordRepository,
+    budgets: BudgetRepository,
     clock: Clock,
 ) : ViewModel() {
     private val month = YearMonth.now(clock)
@@ -37,7 +42,8 @@ class HomeViewModel @Inject constructor(
         accounts.observeAccounts(),
         records.observeMonthSummary(month),
         records.observeRecords(RecordFilter(limit = RECENT_COUNT)),
-    ) { accountList, summary, recent ->
+        budgets.observeOverview(month),
+    ) { accountList, summary, recent, budgetOverview ->
         HomeState(
             loading = false,
             totalBalance = accountList.sumOf { it.balance },
@@ -45,6 +51,7 @@ class HomeViewModel @Inject constructor(
             summary = summary,
             recent = recent,
             hasAccounts = accountList.isNotEmpty(),
+            budget = budgetOverview.overall,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState(month = month))
 

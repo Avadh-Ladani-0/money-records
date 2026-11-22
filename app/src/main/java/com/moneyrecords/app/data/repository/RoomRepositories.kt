@@ -8,6 +8,13 @@ import com.moneyrecords.app.data.mapper.toTree
 import com.moneyrecords.app.domain.model.Account
 import com.moneyrecords.app.domain.model.Budget
 import com.moneyrecords.app.domain.model.BudgetProgress
+import kotlinx.coroutines.flow.first
+import com.moneyrecords.app.data.db.CategoryEntity
+import com.moneyrecords.app.data.db.BudgetEntity
+import com.moneyrecords.app.domain.model.BudgetTarget
+import com.moneyrecords.app.domain.model.BudgetSuggestion
+import com.moneyrecords.app.domain.model.BudgetScope
+import com.moneyrecords.app.domain.model.BudgetOverview
 import com.moneyrecords.app.domain.model.Category
 import com.moneyrecords.app.domain.model.CategoryKind
 import com.moneyrecords.app.domain.model.DeleteOutcome
@@ -224,40 +231,31 @@ class RoomBudgetRepository @Inject constructor(
 ) : BudgetRepository {
     private val dao = db.budgetDao()
 
-    override fun observeProgress(month: YearMonth): Flow<List<BudgetProgress>> {
+    override fun observeOverview(month: YearMonth): Flow<BudgetOverview> {
         val range = MonthRange.of(month, clock.zone)
         val recordDao = db.recordDao()
         return combine(
-            dao.observeForMonth(MonthRange.key(month)),
+            dao.observeEffective(MonthRange.key(month)),
             recordDao.observeExpenseByCategory(range.start, range.endExclusive),
             recordDao.observeTotals(range.start, range.endExclusive),
             db.categoryDao().observeByKind(CategoryKind.EXPENSE, includeArchived = true),
         ) { budgets, spendRows, totals, categories ->
-            val spend = spendRows.associate { it.categoryId to it.total }
-            val byId = categories.associateBy { it.id }
-            budgets
-                .map { entity ->
-                    val category = entity.categoryId?.let(byId::get)
-                    BudgetProgress(
-                        budget = entity.toDomain(),
-                        categoryName = category?.name,
-                        categoryIconKey = category?.iconKey,
-                        spent = if (entity.categoryId == null) totals.expense else spend[entity.categoryId] ?: 0L,
-                    )
-                }
-                .sortedWith(compareBy<BudgetProgress>({ it.budget.categoryId != null }, { it.categoryName }))
+            buildOverview(month, budgets.map { it.toDomain() }, spendRows.associate { it.categoryId to it.total }, totals.expense, categories)
         }
     }
+
+    override fun observeProgress(month: YearMonth): Flow<List<BudgetProgress>> = observeOverview(month).map { it.all }
 
     override suspend fun save(budget: Budget): Long {
         require(budget.limit > 0) { "Budget must be more than zero" }
         return db.withTransaction {
-            budget.categoryId?.let { id ->
+            if (budget.scope == BudgetScope.CATEGORY) {
+                val id = requireNotNull(budget.categoryId) { "Choose a category" }
                 val category = requireNotNull(db.categoryDao().get(id)) { "Category not found" }
                 require(category.kind == CategoryKind.EXPENSE) { "Budgets are for expense categories" }
-                require(category.parentId == null) { "Budgets are set on top-level categories" }
+                require(category.parentId == null) { "Budgets are set on main categories" }
             }
-            val existing = dao.find(budget.categoryId, MonthRange.key(budget.month))
+            val existing = dao.find(budget.scope, budget.categoryId, MonthRange.key(budget.month))
             if (existing != null) {
                 dao.update(budget.toEntity().copy(id = existing.id))
                 existing.id
@@ -267,5 +265,68 @@ class RoomBudgetRepository @Inject constructor(
         }
     }
 
-    override suspend fun delete(id: Long) = dao.delete(id)
+    override suspend fun stop(target: BudgetTarget, month: YearMonth): Unit = db.withTransaction {
+        val key = MonthRange.key(month)
+        val sameMonth = dao.find(target.scope, target.categoryId, key)
+        val before = dao.latestBefore(target.scope, target.categoryId, key)
+        val activeBefore = before != null && before.limitAmount > 0
+        when {
+            // Something earlier is still in effect: write a stop marker for this month.
+            activeBefore && sameMonth != null -> dao.update(sameMonth.copy(limitAmount = 0))
+            activeBefore -> dao.insert(BudgetEntity(scope = target.scope, categoryId = target.categoryId, yearMonth = key, limitAmount = 0))
+            // Nothing earlier: just remove this month's row.
+            sameMonth != null -> dao.delete(sameMonth.id)
+            else -> Unit
+        }
+    }
+
+    override suspend fun spentIn(target: BudgetTarget, month: YearMonth): Long {
+        val overview = observeOverview(month).first()
+        overview.all.firstOrNull { it.budget.target == target }?.let { return it.spent }
+        // Not budgeted that month: compute directly.
+        val range = MonthRange.of(month, clock.zone)
+        val recordDao = db.recordDao()
+        val total = recordDao.observeTotals(range.start, range.endExclusive).first().expense
+        val spend = recordDao.observeExpenseByCategory(range.start, range.endExclusive).first().associate { it.categoryId to it.total }
+        return when (target.scope) {
+            BudgetScope.OVERALL -> total
+            BudgetScope.CATEGORY -> spend[target.categoryId] ?: 0L
+            BudgetScope.REST -> total - overview.categories.sumOf { spend[it.budget.categoryId] ?: 0L }
+        }
+    }
+
+    private fun buildOverview(
+        month: YearMonth,
+        budgets: List<Budget>,
+        spend: Map<Long, Long>,
+        totalExpense: Long,
+        categories: List<CategoryEntity>,
+    ): BudgetOverview {
+        val byId = categories.associateBy { it.id }
+        val mainActive = categories.filter { it.parentId == null && !it.archived }
+        val categoryBudgets = budgets.filter { it.scope == BudgetScope.CATEGORY }
+        val budgetedIds = categoryBudgets.mapNotNull { it.categoryId }.toSet()
+
+        val overall = budgets.firstOrNull { it.scope == BudgetScope.OVERALL }?.let {
+            BudgetProgress(it, categoryName = null, categoryIconKey = null, spent = totalExpense)
+        }
+        val categoryProgress = categoryBudgets.map { b ->
+            val c = b.categoryId?.let(byId::get)
+            BudgetProgress(b, c?.name, c?.iconKey, spent = spend[b.categoryId] ?: 0L)
+        }.sortedWith(compareByDescending<BudgetProgress> { it.fraction }.thenBy { it.categoryName })
+        val restBudget = budgets.firstOrNull { it.scope == BudgetScope.REST }
+        val rest = restBudget?.let {
+            BudgetProgress(
+                it, categoryName = null, categoryIconKey = null,
+                // Everything not counted by a category budget (subcategory/combined spend is already rolled up).
+                spent = totalExpense - budgetedIds.sumOf { id -> spend[id] ?: 0L },
+                coveredCount = mainActive.count { c -> c.id !in budgetedIds },
+            )
+        }
+        val suggestions = if (restBudget != null) emptyList() else mainActive
+            .filter { it.id !in budgetedIds && (spend[it.id] ?: 0L) > 0 }
+            .map { BudgetSuggestion(it.id, it.name, it.iconKey, spend.getValue(it.id)) }
+            .sortedByDescending { it.spent }
+        return BudgetOverview(month, overall, categoryProgress, rest, suggestions)
+    }
 }

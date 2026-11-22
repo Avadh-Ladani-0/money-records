@@ -3,6 +3,7 @@ package com.moneyrecords.app.di
 import android.content.Context
 import androidx.room.Room
 import com.moneyrecords.app.data.db.MoneyRecordsDatabase
+import com.moneyrecords.app.data.db.MIGRATION_1_2
 import com.moneyrecords.app.data.db.SeedCallback
 import com.moneyrecords.app.data.prefs.DataStoreUserPrefs
 import com.moneyrecords.app.data.repository.RoomAccountRepository
@@ -32,6 +33,7 @@ object DatabaseModule {
     fun database(@ApplicationContext context: Context): MoneyRecordsDatabase =
         Room.databaseBuilder(context, MoneyRecordsDatabase::class.java, MoneyRecordsDatabase.NAME)
             .addCallback(SeedCallback())
+            .addMigrations(MIGRATION_1_2)
             .build()
 
     /** Injected so tests can pin "now" and the time zone. */

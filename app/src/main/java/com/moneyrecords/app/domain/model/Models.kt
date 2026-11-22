@@ -100,22 +100,69 @@ data class RecurringRule(
     val active: Boolean = true,
 )
 
+/** What a budget covers. */
+enum class BudgetScope {
+    /** All expenses. */
+    OVERALL,
+    /** One main expense category (its subcategories and combined categories included). */
+    CATEGORY,
+    /** "Everything else": every expense category that has no budget of its own. */
+    REST,
+}
+
+/** Identifies a budget line independent of month. */
+data class BudgetTarget(val scope: BudgetScope, val categoryId: Long? = null) {
+    init { require((scope == BudgetScope.CATEGORY) == (categoryId != null)) { "Only category budgets have a category" } }
+    companion object {
+        val Overall = BudgetTarget(BudgetScope.OVERALL)
+        val Rest = BudgetTarget(BudgetScope.REST)
+        fun category(id: Long) = BudgetTarget(BudgetScope.CATEGORY, id)
+    }
+}
+
+/**
+ * A monthly limit that applies from [month] onwards until changed or stopped.
+ */
 data class Budget(
     val id: Long = 0,
-    /** Null = overall budget for all expenses. */
+    /** Null for OVERALL and REST. */
     val categoryId: Long?,
     val month: YearMonth,
     /** Paise. */
     val limit: Long,
-)
+    val scope: BudgetScope = if (categoryId == null) BudgetScope.OVERALL else BudgetScope.CATEGORY,
+) {
+    val target: BudgetTarget get() = BudgetTarget(scope, categoryId)
+}
 
 data class BudgetProgress(
     val budget: Budget,
     val categoryName: String?,
     val categoryIconKey: String?,
     val spent: Long,
+    /** For REST: how many main expense categories it currently covers. */
+    val coveredCount: Int = 0,
 ) {
     val fraction: Float get() = if (budget.limit <= 0) 0f else spent.toFloat() / budget.limit
     val remaining: Long get() = budget.limit - spent
     val isOver: Boolean get() = spent > budget.limit
+    /** 80% or more used, but not over. */
+    val isNearLimit: Boolean get() = !isOver && fraction >= 0.8f
+}
+
+/** A main expense category with spending this month but no budget of its own. */
+data class BudgetSuggestion(val categoryId: Long, val name: String, val iconKey: String, val spent: Long)
+
+data class BudgetOverview(
+    val month: YearMonth,
+    val overall: BudgetProgress?,
+    /** Category budgets, most used first. */
+    val categories: List<BudgetProgress>,
+    val rest: BudgetProgress?,
+    /** Empty while a REST budget exists (those categories are already covered). */
+    val suggestions: List<BudgetSuggestion>,
+) {
+    /** Overall first, then categories, then "Everything else". */
+    val all: List<BudgetProgress> get() = listOfNotNull(overall) + categories + listOfNotNull(rest)
+    val isEmpty: Boolean get() = all.isEmpty()
 }

@@ -1,11 +1,19 @@
 package com.moneyrecords.app.ui.components
 
 import android.content.ClipData
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -41,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -70,54 +77,64 @@ private val calculatorRows: List<List<KeypadKey>> = listOf(
 )
 
 /**
- * A draggable calculator bubble drawn over the whole app. Its position is stored as a fraction of
- * the screen so it survives rotation and different screen sizes.
+ * Calculator tab docked to the right edge of the screen. Drag it up or down; its height is stored as a
+ * fraction of the screen. It slides off-screen while content scrolls ([scrollSignal] changes) or the
+ * keyboard is open, and slides back once things are idle, so it never sits over what you're reading.
  */
 @Composable
-fun QuickCalculatorOverlay(prefs: CalculatorPrefs, onMoved: (x: Float, y: Float) -> Unit) {
+fun QuickCalculatorOverlay(
+    prefs: CalculatorPrefs,
+    scrollSignal: State<Int>,
+    onMoved: (x: Float, y: Float) -> Unit,
+) {
     var open by rememberSaveable { mutableStateOf(false) }
     var input by rememberSaveable { mutableStateOf("") }
+    var scrolling by remember { mutableStateOf(false) }
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
+    // Any scroll hides the tab; it returns after a short quiet period.
+    LaunchedEffect(scrollSignal.value) {
+        if (scrollSignal.value == 0) return@LaunchedEffect
+        scrolling = true
+        delay(900)
+        scrolling = false
+    }
+    val hidden = scrolling || imeVisible
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
-        val bubble = 52.dp
-        val margin = 8.dp
-        val maxX = with(density) { (maxWidth - bubble - margin).toPx() }
-        val maxY = with(density) { (maxHeight - bubble - margin).toPx() }
-        val minPx = with(density) { margin.toPx() }
-        var offset by remember(prefs.x, prefs.y, maxX, maxY) {
-            mutableStateOf(Offset(minPx + prefs.x * (maxX - minPx), minPx + prefs.y * (maxY - minPx)))
+        val tabWidth = 34.dp
+        val tabHeight = 56.dp
+        val topLimit = with(density) { WindowInsets.statusBars.getTop(this).toFloat() + 8.dp.toPx() }
+        val bottomLimit = with(density) { (maxHeight - tabHeight).toPx() - WindowInsets.navigationBars.getBottom(this) - 8.dp.toPx() }
+        var y by remember(prefs.y, topLimit, bottomLimit) {
+            mutableFloatStateOf(topLimit + prefs.y * (bottomLimit - topLimit))
         }
+        val slide by animateDpAsState(if (hidden) tabWidth + 4.dp else 0.dp, label = "calcSlide")
+        val shape = RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp)
 
         Box(
             Modifier
-                .offset { IntOffset(offset.x.roundToInt(), offset.y.roundToInt()) }
-                .size(bubble)
-                .shadow(8.dp, CircleShape)
-                .clip(CircleShape)
+                .align(Alignment.TopEnd)
+                .offset { IntOffset(slide.roundToPx(), y.roundToInt()) }
+                .size(tabWidth, tabHeight)
+                .shadow(6.dp, shape)
+                .clip(shape)
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                .border(BorderStroke(1.dp, MrTheme.colors.hairline), CircleShape)
-                .pointerInput(maxX, maxY) {
-                    detectDragGestures(
-                        onDragEnd = {
-                            onMoved(
-                                ((offset.x - minPx) / (maxX - minPx)).coerceIn(0f, 1f),
-                                ((offset.y - minPx) / (maxY - minPx)).coerceIn(0f, 1f),
-                            )
-                        },
-                    ) { change, drag ->
+                .border(BorderStroke(1.dp, MrTheme.colors.hairline), shape)
+                .pointerInput(topLimit, bottomLimit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { onMoved(1f, ((y - topLimit) / (bottomLimit - topLimit)).coerceIn(0f, 1f)) },
+                    ) { change, dragAmount ->
                         change.consume()
-                        offset = Offset(
-                            (offset.x + drag.x).coerceIn(minPx, maxX),
-                            (offset.y + drag.y).coerceIn(minPx, maxY),
-                        )
+                        y = (y + dragAmount).coerceIn(topLimit, bottomLimit)
                     }
                 }
                 .clickable { open = true }
                 .semantics { contentDescription = "Calculator" },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Outlined.Calculate, contentDescription = null, tint = MaterialTheme.colorScheme.onBackground)
+            Icon(Icons.Outlined.Calculate, contentDescription = null, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
         }
     }
 

@@ -23,6 +23,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyrecords.app.domain.money.Money
 import com.moneyrecords.app.ui.components.AmountText
+import com.moneyrecords.app.ui.components.DotProgress
 import com.moneyrecords.app.ui.components.EmptyState
 import com.moneyrecords.app.ui.components.HeroAmount
 import com.moneyrecords.app.ui.components.MrCard
@@ -48,6 +49,7 @@ fun HomeScreen(
     onDuplicateRecord: (Long) -> Unit,
     onSeeAllRecords: () -> Unit,
     onAddAccount: () -> Unit,
+    onOpenBudgets: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -87,6 +89,24 @@ fun HomeScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+        }
+
+        state.budget?.let { budget ->
+            item {
+                Spacer(Modifier.height(Space.md))
+                MrCard(onClick = onOpenBudgets, contentPadding = PaddingValues(horizontal = Space.xl, vertical = Space.lg)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SectionLabel("Budget · $monthName", Modifier.weight(1f))
+                        Text(
+                            "${Money.format(budget.spent)} of ${Money.format(budget.budget.limit)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (budget.isOver) MrTheme.colors.negative else MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
+                    Spacer(Modifier.height(Space.sm))
+                    DotProgress(budget.fraction, dotSize = 6.dp)
                 }
             }
         }

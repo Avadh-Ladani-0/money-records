@@ -7,8 +7,8 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 - **Private**: all data stays in a local database on the device.
 - **Design**: minimalist monochrome with a single red accent and dot-matrix numbers, in light and dark themes.
 
-> Status: early development (v0.1.0). Accounts, records (add/edit/duplicate), the Records tab with
-> filters and search, categories and a floating calculator work. Budgets come next.
+> Status: early development (v0.1.0). Accounts, records, the Records tab with filters and search,
+> categories, monthly budgets and a floating calculator work. Recurring records and reminders come next.
 
 ## Features so far
 
@@ -21,6 +21,11 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 - **Categories**: add, rename, nest one level deep, pick an icon, archive. Create one on the spot from the
   record's category picker. **Combine** two main categories (long-press one, tap another) into e.g.
   "Home-Food" with a split icon; it lives inside the first, so it counts toward Home but not Food.
+- **Budgets**: monthly limits for **Overall**, individual main categories, and **Everything else**
+  (all categories without their own budget). Set once, they carry forward to later months; edits apply
+  from that month on, and a budget can be stopped without touching past months. Dot-matrix progress,
+  "80% used" / "Over" warnings, "₹X a day left", suggestions for unbudgeted spending, and an overall
+  budget bar on Home.
 - **Floating calculator**: draggable bubble on every screen with a Copy button; can be turned off in Settings.
 
 ## Roadmap
@@ -30,8 +35,8 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 | 1 | App scaffold, design system (colours, type, dot-matrix components), navigation | ✅ Done |
 | 2 | Data layer: Room database, repositories, default categories, tests | ✅ Done |
 | 3 | Core screens: add/edit record, records list & search, accounts, categories, live Home, floating calculator | ✅ Done |
-| 4 | Budgets: monthly per-category and overall limits with progress | ⏳ Next |
-| 5 | Recurring records and reminders | Planned |
+| 4 | Budgets: overall, per-category and "everything else" monthly limits, carry-forward, progress | ✅ Done |
+| 5 | Recurring records and reminders (+ budget alerts) | ⏳ Next |
 | 6 | App lock: PIN and fingerprint | Planned |
 | 7 | Home-screen widget | Planned |
 | 8 | Backup & restore to a file (free) | Planned |

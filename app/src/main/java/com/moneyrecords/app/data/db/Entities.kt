@@ -1,11 +1,13 @@
 package com.moneyrecords.app.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.moneyrecords.app.domain.model.AccountType
+import com.moneyrecords.app.domain.model.BudgetScope
 import com.moneyrecords.app.domain.model.CategoryKind
 import com.moneyrecords.app.domain.model.Frequency
 import com.moneyrecords.app.domain.model.RecordKind
@@ -102,10 +104,12 @@ data class RecordEntity(
 )
 data class BudgetEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** OVERALL | CATEGORY | REST (added in DB version 2). */
+    @ColumnInfo(defaultValue = "CATEGORY") val scope: BudgetScope = BudgetScope.CATEGORY,
     val categoryId: Long?,
     /** e.g. 202611. */
     val yearMonth: Int,
-    /** Paise. ("limit" is an SQL keyword, hence the longer name.) */
+    /** Paise; 0 = stop marker ("no budget from this month on"). ("limit" is an SQL keyword.) */
     val limitAmount: Long,
 )
 

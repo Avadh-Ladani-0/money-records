@@ -10,7 +10,12 @@ import com.moneyrecords.app.domain.model.Record
 import com.moneyrecords.app.domain.model.RecordDetails
 import com.moneyrecords.app.domain.model.RecordFilter
 import com.moneyrecords.app.domain.model.RecordKind
+import com.moneyrecords.app.domain.model.Budget
+import com.moneyrecords.app.domain.model.BudgetOverview
+import com.moneyrecords.app.domain.model.BudgetProgress
+import com.moneyrecords.app.domain.model.BudgetTarget
 import com.moneyrecords.app.domain.repository.AccountRepository
+import com.moneyrecords.app.domain.repository.BudgetRepository
 import com.moneyrecords.app.domain.repository.CalculatorPrefs
 import com.moneyrecords.app.domain.repository.CategoryRepository
 import com.moneyrecords.app.domain.repository.RecordDefaults
@@ -105,6 +110,20 @@ class FakePrefs : UserPrefsRepository {
     override fun observeCalculator(): Flow<CalculatorPrefs> = calculator
     override suspend fun setCalculatorEnabled(enabled: Boolean) = calculator.update { it.copy(enabled = enabled) }
     override suspend fun setCalculatorPosition(x: Float, y: Float) = calculator.update { it.copy(x = x, y = y) }
+}
+
+class FakeBudgets : BudgetRepository {
+    /** Overviews by month; months not set return an empty overview. */
+    val overviews = MutableStateFlow<Map<YearMonth, BudgetOverview>>(emptyMap())
+    val saved = mutableListOf<Budget>()
+    val stopped = mutableListOf<Pair<BudgetTarget, YearMonth>>()
+    var spent: (BudgetTarget, YearMonth) -> Long = { _, _ -> 0L }
+    override fun observeOverview(month: YearMonth): Flow<BudgetOverview> =
+        overviews.map { it[month] ?: BudgetOverview(month, null, emptyList(), null, emptyList()) }
+    override fun observeProgress(month: YearMonth): Flow<List<BudgetProgress>> = observeOverview(month).map { it.all }
+    override suspend fun save(budget: Budget): Long { require(budget.limit > 0); saved += budget; return saved.size.toLong() }
+    override suspend fun stop(target: BudgetTarget, month: YearMonth) { stopped += target to month }
+    override suspend fun spentIn(target: BudgetTarget, month: YearMonth) = spent(target, month)
 }
 
 object TestData {

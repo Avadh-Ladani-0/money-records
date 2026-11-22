@@ -42,6 +42,11 @@ import com.moneyrecords.app.ui.feature.categories.CategoryEditorScreen
 import com.moneyrecords.app.ui.feature.home.HomeScreen
 import com.moneyrecords.app.ui.components.QuickCalculatorOverlay
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import com.moneyrecords.app.ui.feature.record.RecordEditorScreen
 import com.moneyrecords.app.ui.feature.records.RecordsScreen
@@ -69,8 +74,18 @@ fun MoneyRecordsRoot(appViewModel: AppViewModel = hiltViewModel()) {
     val scope = rememberCoroutineScope()
 
     val calculator by appViewModel.calculator.collectAsStateWithLifecycle()
+    // Bumped on every scroll anywhere in the app; the calculator tab hides while it keeps changing.
+    val scrollSignal = remember { mutableIntStateOf(0) }
+    val scrollWatcher = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y != 0f) scrollSignal.intValue++
+                return Offset.Zero
+            }
+        }
+    }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().nestedScroll(scrollWatcher)) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             contentWindowInsets = WindowInsets(0),
@@ -123,6 +138,13 @@ fun MoneyRecordsRoot(appViewModel: AppViewModel = hiltViewModel()) {
                             }
                         },
                         onAddAccount = { navController.navigate(AccountEditorRoute()) },
+                        onOpenBudgets = {
+                            navController.navigate(BudgetsRoute) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
                     )
                 }
                 composable<RecordsRoute> {
@@ -176,7 +198,7 @@ fun MoneyRecordsRoot(appViewModel: AppViewModel = hiltViewModel()) {
             }
         }
         calculator?.takeIf { it.enabled }?.let { prefs ->
-            QuickCalculatorOverlay(prefs = prefs, onMoved = appViewModel::moveCalculator)
+            QuickCalculatorOverlay(prefs = prefs, scrollSignal = scrollSignal, onMoved = appViewModel::moveCalculator)
         }
     }
 }

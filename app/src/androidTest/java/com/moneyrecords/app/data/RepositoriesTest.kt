@@ -153,7 +153,32 @@ class RepositoriesTest {
         assertEquals(1, records.observeRecords(RecordFilter(query = "50%")).first().size)
         // "%" is a literal character, not "match anything".
         assertEquals(1, records.observeRecords(RecordFilter(query = "%")).first().size)
-        assertEquals(2, records.observeRecords(RecordFilter(accountId = bank)).first().size)
+        assertEquals(2, records.observeRecords(RecordFilter(accountIds = setOf(bank))).first().size)
+    }
+
+    @Test fun multiSelectFiltersAndDateRange() = runTest {
+        val bank = account("Bank")
+        val cash = account("Cash")
+        val card = account("Card")
+        val food = categoryId("Food & Dining", CategoryKind.EXPENSE)
+        val fuel = categoryId("Fuel", CategoryKind.EXPENSE)
+        val rent = categoryId("Rent", CategoryKind.EXPENSE)
+        val snacks = categories.save(Category(name = "Snacks", kind = CategoryKind.EXPENSE, parentId = food, iconKey = "food"))
+        records.save(Record(kind = RecordKind.EXPENSE, amount = 100, accountId = bank, categoryId = snacks, occurredAt = inNov))
+        records.save(Record(kind = RecordKind.EXPENSE, amount = 200, accountId = cash, categoryId = fuel, occurredAt = inNov))
+        records.save(Record(kind = RecordKind.EXPENSE, amount = 300, accountId = card, categoryId = rent, occurredAt = inOct))
+        records.save(Record(kind = RecordKind.TRANSFER, amount = 400, accountId = card, toAccountId = cash, occurredAt = inNov))
+
+        fun amounts(filter: RecordFilter) = kotlinx.coroutines.runBlocking {
+            records.observeRecords(filter).first().map { it.record.amount }.sorted()
+        }
+        // Accounts: from OR to any selected account.
+        assertEquals(listOf(100L, 200L, 400L), amounts(RecordFilter(accountIds = setOf(bank, cash))))
+        // Categories: selecting a parent includes its subcategories.
+        assertEquals(listOf(100L, 200L), amounts(RecordFilter(categoryIds = setOf(food, fuel))))
+        // Date range is half-open and combines with the other filters.
+        val nov = com.moneyrecords.app.domain.time.MonthRange.of(november, zone)
+        assertEquals(listOf(200L, 400L), amounts(RecordFilter(accountIds = setOf(cash, card), range = nov)))
     }
 
     @Test fun budgetProgressCountsSubcategorySpendAndReplacesLimit() = runTest {
@@ -176,5 +201,40 @@ class RepositoriesTest {
         assertEquals(500_00L, foodBudget.budget.limit)
         assertEquals(600_00L, foodBudget.spent)
         assertTrue(foodBudget.isOver)
+    }
+
+    @Test fun combinedCategoryCountsInFirstParentOnly() = runTest {
+        val bank = account("Bank")
+        val rent = categoryId("Rent", CategoryKind.EXPENSE)
+        val food = categoryId("Food & Dining", CategoryKind.EXPENSE)
+        val combo = categories.combine(rent, food, "Home-Food")
+        val saved = categories.get(combo)!!
+        assertEquals(rent, saved.parentId)
+        assertEquals("combo:rent+food", saved.iconKey)
+
+        records.save(Record(kind = RecordKind.EXPENSE, amount = 300_00, accountId = bank, categoryId = combo, occurredAt = inNov))
+        fun count(vararg ids: Long) = kotlinx.coroutines.runBlocking {
+            records.observeRecords(RecordFilter(categoryIds = ids.toSet())).first().size
+        }
+        assertEquals(1, count(combo))
+        assertEquals(1, count(rent))   // rolls up into the first category
+        assertEquals(0, count(food))   // but not into the second
+
+        budgets.save(Budget(categoryId = rent, month = november, limit = 1_000_00))
+        budgets.save(Budget(categoryId = food, month = november, limit = 1_000_00))
+        val byCategory = budgets.observeProgress(november).first().associateBy { it.budget.categoryId }
+        assertEquals(300_00L, byCategory.getValue(rent).spent)
+        assertEquals(0L, byCategory.getValue(food).spent)
+    }
+
+    @Test fun combineRules() = runTest {
+        val rent = categoryId("Rent", CategoryKind.EXPENSE)
+        val food = categoryId("Food & Dining", CategoryKind.EXPENSE)
+        val salary = categoryId("Salary", CategoryKind.INCOME)
+        val combo = categories.combine(rent, food, "Home-Food")
+        suspend fun rejected(block: suspend () -> Unit) = runCatching { block() }.exceptionOrNull() is IllegalArgumentException
+        assertTrue(rejected { categories.combine(rent, rent, "x") })          // same category
+        assertTrue(rejected { categories.combine(rent, salary, "x") })        // different types
+        assertTrue(rejected { categories.combine(combo, food, "x") })         // a subcategory / combined
     }
 }

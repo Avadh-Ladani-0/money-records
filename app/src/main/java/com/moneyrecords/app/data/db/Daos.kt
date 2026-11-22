@@ -95,7 +95,7 @@ interface CategoryDao {
 @Dao
 interface RecordDao {
     /**
-     * Records newest first with display names. Every filter is optional (null = no filter).
+     * Records newest first with display names. Every filter is optional (null / "all" flag = no filter).
      * [query] matches note, category or account name; LIKE wildcards in it must be escaped with '\'.
      */
     @Query(
@@ -106,8 +106,8 @@ interface RecordDao {
         JOIN accounts a ON a.id = r.accountId
         LEFT JOIN accounts ta ON ta.id = r.toAccountId
         LEFT JOIN categories c ON c.id = r.categoryId
-        WHERE (:accountId IS NULL OR r.accountId = :accountId OR r.toAccountId = :accountId)
-          AND (:categoryId IS NULL OR r.categoryId = :categoryId OR c.parentId = :categoryId)
+        WHERE (:allAccounts OR r.accountId IN (:accountIds) OR r.toAccountId IN (:accountIds))
+          AND (:allCategories OR r.categoryId IN (:categoryIds) OR c.parentId IN (:categoryIds))
           AND (:kind IS NULL OR r.kind = :kind)
           AND (:from IS NULL OR r.occurredAt >= :from)
           AND (:to IS NULL OR r.occurredAt < :to)
@@ -120,8 +120,10 @@ interface RecordDao {
         """,
     )
     fun observe(
-        accountId: Long?,
-        categoryId: Long?,
+        allAccounts: Boolean,
+        accountIds: List<Long>,
+        allCategories: Boolean,
+        categoryIds: List<Long>,
         kind: RecordKind?,
         from: Long?,
         to: Long?,

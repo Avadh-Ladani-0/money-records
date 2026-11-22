@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material.icons.outlined.Spa
 import androidx.compose.material.icons.outlined.Work
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.moneyrecords.app.domain.repository.ComboIcon
 
 /**
  * The single place mapping stored icon keys to icons. Keys are persisted in the database,
@@ -60,5 +61,9 @@ object AppIcons {
     val accountKeys: List<String> = listOf("cash", "bank", "card", "wallet")
     val categoryKeys: List<String> = byKey.keys.filterNot { it in accountKeys }
 
-    fun forKey(key: String?): ImageVector = key?.let(byKey::get) ?: Icons.Outlined.Category
+    /** For a combined key this returns the first icon; use CategoryIcon to draw both. */
+    fun forKey(key: String?): ImageVector {
+        val plain = ComboIcon.parts(key)?.first ?: key
+        return plain?.let(byKey::get) ?: Icons.Outlined.Category
+    }
 }

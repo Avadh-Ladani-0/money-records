@@ -65,9 +65,10 @@ data class RecordDetails(
 )
 
 data class RecordFilter(
-    val accountId: Long? = null,
-    /** Matches the category and its subcategories. */
-    val categoryId: Long? = null,
+    /** Empty = all accounts. Matches records from or to any of these accounts. */
+    val accountIds: Set<Long> = emptySet(),
+    /** Empty = all categories. Matches these categories and their subcategories. */
+    val categoryIds: Set<Long> = emptySet(),
     val kind: RecordKind? = null,
     val range: TimeRange? = null,
     val query: String? = null,

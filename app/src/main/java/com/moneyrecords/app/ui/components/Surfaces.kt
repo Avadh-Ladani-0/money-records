@@ -3,6 +3,7 @@ package com.moneyrecords.app.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -112,24 +113,33 @@ fun ListRow(
     icon: ImageVector? = null,
     iconTint: Color = MaterialTheme.colorScheme.onSurface,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    /** Replaces [icon] inside the round badge, e.g. a combined-category icon. */
+    leading: (@Composable () -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     Row(
         modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(
+                when {
+                    onLongClick != null -> Modifier.combinedClickable(onClick = onClick ?: {}, onLongClick = onLongClick)
+                    onClick != null -> Modifier.clickable(onClick = onClick)
+                    else -> Modifier
+                },
+            )
             .padding(vertical = Space.md, horizontal = Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) {
+        if (icon != null || leading != null) {
             Box(
                 Modifier
                     .size(44.dp)
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(22.dp))
+                if (leading != null) leading() else Icon(icon!!, contentDescription = null, tint = iconTint, modifier = Modifier.size(22.dp))
             }
             Spacer(Modifier.width(Space.lg))
         }

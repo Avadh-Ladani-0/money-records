@@ -1,0 +1,118 @@
+package com.moneyrecords.app.testing
+
+import com.moneyrecords.app.domain.model.Account
+import com.moneyrecords.app.domain.model.AccountType
+import com.moneyrecords.app.domain.model.Category
+import com.moneyrecords.app.domain.model.CategoryKind
+import com.moneyrecords.app.domain.model.DeleteOutcome
+import com.moneyrecords.app.domain.model.MonthSummary
+import com.moneyrecords.app.domain.model.Record
+import com.moneyrecords.app.domain.model.RecordDetails
+import com.moneyrecords.app.domain.model.RecordFilter
+import com.moneyrecords.app.domain.model.RecordKind
+import com.moneyrecords.app.domain.repository.AccountRepository
+import com.moneyrecords.app.domain.repository.CalculatorPrefs
+import com.moneyrecords.app.domain.repository.CategoryRepository
+import com.moneyrecords.app.domain.repository.RecordDefaults
+import com.moneyrecords.app.domain.repository.RecordRepository
+import com.moneyrecords.app.domain.repository.UserPrefsRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import java.time.YearMonth
+
+class FakeAccounts(initial: List<Account> = emptyList()) : AccountRepository {
+    val accounts = MutableStateFlow(initial)
+    override fun observeAccounts(includeArchived: Boolean): Flow<List<Account>> =
+        accounts.map { list -> if (includeArchived) list else list.filterNot { it.archived } }
+    override fun observeTotalBalance(): Flow<Long> = accounts.map { list -> list.filterNot { it.archived }.sumOf { it.balance } }
+    override suspend fun get(id: Long) = accounts.value.firstOrNull { it.id == id }
+    override suspend fun save(account: Account): Long {
+        val id = if (account.id == 0L) (accounts.value.maxOfOrNull { it.id } ?: 0) + 1 else account.id
+        accounts.update { list -> list.filterNot { it.id == id } + account.copy(id = id) }
+        return id
+    }
+    override suspend fun setArchived(id: Long, archived: Boolean) =
+        accounts.update { list -> list.map { if (it.id == id) it.copy(archived = archived) else it } }
+    override suspend fun deleteOrArchive(id: Long): DeleteOutcome {
+        accounts.update { list -> list.filterNot { it.id == id } }
+        return DeleteOutcome.DELETED
+    }
+}
+
+class FakeCategories(initial: Map<CategoryKind, List<Category>>) : CategoryRepository {
+    val trees = MutableStateFlow(initial)
+    private var nextId = 1000L
+    override fun observeTree(kind: CategoryKind, includeArchived: Boolean): Flow<List<Category>> =
+        trees.map { it[kind].orEmpty() }
+    override suspend fun get(id: Long) = trees.value.values.flatten().flatMap { listOf(it) + it.children }.firstOrNull { it.id == id }
+    override suspend fun save(category: Category): Long {
+        require(category.name.isNotBlank()) { "Category name is required" }
+        val saved = category.copy(id = if (category.id == 0L) nextId++ else category.id)
+        trees.update { map ->
+            // Remove any previous version first, so saving an existing category replaces it.
+            val tree = map[saved.kind].orEmpty()
+                .filterNot { it.id == saved.id }
+                .map { p -> p.copy(children = p.children.filterNot { it.id == saved.id }) }
+            val updated = if (saved.parentId == null) tree + saved
+            else tree.map { p -> if (p.id == saved.parentId) p.copy(children = p.children + saved) else p }
+            map + (saved.kind to updated)
+        }
+        return saved.id
+    }
+    override suspend fun setArchived(id: Long, archived: Boolean) = Unit
+    override suspend fun deleteOrArchive(id: Long) = DeleteOutcome.DELETED
+    override suspend fun combine(firstId: Long, secondId: Long, name: String): Long {
+        val first = requireNotNull(get(firstId)); val second = requireNotNull(get(secondId))
+        return save(Category(name = name, kind = first.kind, parentId = first.id,
+            iconKey = com.moneyrecords.app.domain.repository.ComboIcon.key(first.iconKey, second.iconKey)))
+    }
+}
+
+class FakeRecords(initial: List<Record> = emptyList()) : RecordRepository {
+    val records = MutableStateFlow(initial)
+    var lastFilter: RecordFilter? = null
+    /** Names used to build RecordDetails; tests can fill these in. */
+    var details: (Record) -> RecordDetails = { RecordDetails(it, "Account ${it.accountId}", null, "Category ${it.categoryId}", null) }
+
+    override fun observeRecords(filter: RecordFilter): Flow<List<RecordDetails>> {
+        lastFilter = filter
+        return records.map { list ->
+            list.filter { r -> filter.range == null || r.occurredAt.toEpochMilli() in filter.range.start until filter.range.endExclusive }
+                .sortedByDescending { it.occurredAt }
+                .map(details)
+        }
+    }
+    override fun observeMonthSummary(month: YearMonth): Flow<MonthSummary> = records.map { list ->
+        MonthSummary(list.filter { it.kind == RecordKind.INCOME }.sumOf { it.amount }, list.filter { it.kind == RecordKind.EXPENSE }.sumOf { it.amount })
+    }
+    override suspend fun get(id: Long) = records.value.firstOrNull { it.id == id }
+    override suspend fun save(record: Record): Long {
+        require(record.amount > 0) { "Amount must be more than zero" }
+        val id = if (record.id == 0L) (records.value.maxOfOrNull { it.id } ?: 0) + 1 else record.id
+        records.update { list -> list.filterNot { it.id == id } + record.copy(id = id) }
+        return id
+    }
+    override suspend fun delete(id: Long) = records.update { list -> list.filterNot { it.id == id } }
+}
+
+class FakePrefs : UserPrefsRepository {
+    val defaults = mutableMapOf<RecordKind, RecordDefaults>()
+    val calculator = MutableStateFlow(CalculatorPrefs())
+    override suspend fun recordDefaults(kind: RecordKind) = defaults[kind] ?: RecordDefaults()
+    override suspend fun rememberRecordDefaults(kind: RecordKind, defaults: RecordDefaults) { this.defaults[kind] = defaults }
+    override fun observeCalculator(): Flow<CalculatorPrefs> = calculator
+    override suspend fun setCalculatorEnabled(enabled: Boolean) = calculator.update { it.copy(enabled = enabled) }
+    override suspend fun setCalculatorPosition(x: Float, y: Float) = calculator.update { it.copy(x = x, y = y) }
+}
+
+object TestData {
+    val cash = Account(id = 1, name = "Cash", type = AccountType.CASH, iconKey = "cash")
+    val bank = Account(id = 2, name = "Bank", type = AccountType.BANK, iconKey = "bank")
+    val food = Category(id = 10, name = "Food", kind = CategoryKind.EXPENSE, iconKey = "food",
+        children = listOf(Category(id = 11, name = "Snacks", kind = CategoryKind.EXPENSE, parentId = 10, iconKey = "food")))
+    val fuel = Category(id = 12, name = "Fuel", kind = CategoryKind.EXPENSE, iconKey = "fuel")
+    val salary = Category(id = 20, name = "Salary", kind = CategoryKind.INCOME, iconKey = "salary")
+    val trees = mapOf(CategoryKind.EXPENSE to listOf(food, fuel), CategoryKind.INCOME to listOf(salary))
+}

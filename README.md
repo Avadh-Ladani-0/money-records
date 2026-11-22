@@ -7,8 +7,21 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 - **Private**: all data stays in a local database on the device.
 - **Design**: minimalist monochrome with a single red accent and dot-matrix numbers, in light and dark themes.
 
-> Status: early development (v0.1.0). The app shell, design system and data layer are done; the
-> screens for adding and browsing records come next.
+> Status: early development (v0.1.0). Accounts, records (add/edit/duplicate), the Records tab with
+> filters and search, categories and a floating calculator work. Budgets come next.
+
+## Features so far
+
+- **Fast record entry**: Expense · Income · Transfer, built-in ₹ keypad that also calculates (`250+180`),
+  category icon grid with subcategories, account, date, time and note. Remembers your last account and
+  category. Tap a record to edit it; long-press to duplicate it; delete with undo.
+- **Records tab**: month-by-month with In / Out / Net, grouped by day; custom date range, multi-select
+  account and category filters, type filter and search.
+- **Accounts**: Cash, Bank, Card, Wallet with opening balances and live balances; archive instead of delete.
+- **Categories**: add, rename, nest one level deep, pick an icon, archive. Create one on the spot from the
+  record's category picker. **Combine** two main categories (long-press one, tap another) into e.g.
+  "Home-Food" with a split icon; it lives inside the first, so it counts toward Home but not Food.
+- **Floating calculator**: draggable bubble on every screen with a Copy button; can be turned off in Settings.
 
 ## Roadmap
 
@@ -16,8 +29,8 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 |---|---|---|
 | 1 | App scaffold, design system (colours, type, dot-matrix components), navigation | ✅ Done |
 | 2 | Data layer: Room database, repositories, default categories, tests | ✅ Done |
-| 3 | Core screens: add/edit record, records list & search, accounts, categories, live Home | ⏳ Next |
-| 4 | Budgets: monthly per-category and overall limits with progress | Planned |
+| 3 | Core screens: add/edit record, records list & search, accounts, categories, live Home, floating calculator | ✅ Done |
+| 4 | Budgets: monthly per-category and overall limits with progress | ⏳ Next |
 | 5 | Recurring records and reminders | Planned |
 | 6 | App lock: PIN and fingerprint | Planned |
 | 7 | Home-screen widget | Planned |
@@ -61,10 +74,12 @@ The debug build installs as `com.moneyrecords.app.debug`, so it can sit next to 
 
 ```
 app/src/main/java/com/moneyrecords/app/
-├── domain/         # Plain Kotlin: models, repository interfaces, Money (₹ format/parse), MonthRange
+├── domain/         # Plain Kotlin: models, repository interfaces, Money (₹ format/parse), MonthRange,
+│                   # calc/Expression (keypad & calculator maths)
 ├── data/
 │   ├── db/         # Room entities, DAOs, database, default-category seed
 │   ├── mapper/     # Entity <-> domain mapping
+│   ├── prefs/      # DataStore: last-used account/category, calculator settings
 │   └── repository/ # Room-backed repositories (validation, archive-or-delete)
 ├── di/             # Hilt modules
 └── ui/
@@ -72,7 +87,7 @@ app/src/main/java/com/moneyrecords/app/
     ├── components/ # Reusable UI: amounts, dot-matrix progress, cards, rows, bottom bar
     ├── icons/      # Stored icon keys -> icons
     ├── navigation/ # Scaffold, bottom bar, routes
-    └── feature/    # Screens: home, records, accounts, budgets, settings, design system
+    └── feature/    # Screens: home, record editor, records, accounts, categories, budgets, settings
 app/schemas/        # Exported Room schemas (used to write and test migrations)
 ```
 

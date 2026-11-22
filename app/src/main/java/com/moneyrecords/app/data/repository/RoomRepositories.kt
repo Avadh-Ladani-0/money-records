@@ -20,6 +20,7 @@ import com.moneyrecords.app.domain.model.RecurringRule
 import com.moneyrecords.app.domain.repository.AccountRepository
 import com.moneyrecords.app.domain.repository.BudgetRepository
 import com.moneyrecords.app.domain.repository.CategoryRepository
+import com.moneyrecords.app.domain.repository.ComboIcon
 import com.moneyrecords.app.domain.repository.RecordRepository
 import com.moneyrecords.app.domain.repository.RecurringRepository
 import com.moneyrecords.app.domain.time.MonthRange
@@ -101,6 +102,24 @@ class RoomCategoryRepository @Inject constructor(
 
     override suspend fun setArchived(id: Long, archived: Boolean) = dao.setArchivedWithChildren(id, archived)
 
+    override suspend fun combine(firstId: Long, secondId: Long, name: String): Long = db.withTransaction {
+        require(firstId != secondId) { "Pick two different categories" }
+        val first = requireNotNull(dao.get(firstId)) { "Category not found" }
+        val second = requireNotNull(dao.get(secondId)) { "Category not found" }
+        require(first.parentId == null && second.parentId == null) { "Only main categories can be combined" }
+        require(!ComboIcon.isCombo(first.iconKey) && !ComboIcon.isCombo(second.iconKey)) { "Combined categories can't be combined again" }
+        require(first.kind == second.kind) { "Both categories must be the same type" }
+        require(!first.archived && !second.archived) { "Archived categories can't be combined" }
+        save(
+            Category(
+                name = name.ifBlank { "${first.name}-${second.name}" },
+                kind = first.kind,
+                parentId = first.id,
+                iconKey = ComboIcon.key(first.iconKey, second.iconKey),
+            ),
+        )
+    }
+
     override suspend fun deleteOrArchive(id: Long): DeleteOutcome = db.withTransaction {
         if (dao.isUsed(id)) {
             dao.setArchivedWithChildren(id, true)
@@ -120,8 +139,10 @@ class RoomRecordRepository @Inject constructor(
 
     override fun observeRecords(filter: RecordFilter): Flow<List<RecordDetails>> =
         dao.observe(
-            accountId = filter.accountId,
-            categoryId = filter.categoryId,
+            allAccounts = filter.accountIds.isEmpty(),
+            accountIds = filter.accountIds.toList(),
+            allCategories = filter.categoryIds.isEmpty(),
+            categoryIds = filter.categoryIds.toList(),
             kind = filter.kind,
             from = filter.range?.start,
             to = filter.range?.endExclusive,

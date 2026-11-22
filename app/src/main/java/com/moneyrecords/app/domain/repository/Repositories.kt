@@ -35,6 +35,22 @@ interface CategoryRepository {
     suspend fun save(category: Category): Long
     suspend fun setArchived(id: Long, archived: Boolean)
     suspend fun deleteOrArchive(id: Long): DeleteOutcome
+
+    /**
+     * Creates a combined category from two top-level categories of the same type. It is stored as a
+     * subcategory of [firstId], so its records also count toward the first category (not the second).
+     * Returns the new category's id.
+     */
+    suspend fun combine(firstId: Long, secondId: Long, name: String): Long
+}
+
+/** Icon keys for combined categories: "combo:<first>+<second>". */
+object ComboIcon {
+    private const val PREFIX = "combo:"
+    fun key(first: String, second: String) = "$PREFIX$first+$second"
+    fun parts(key: String?): Pair<String, String>? =
+        key?.takeIf { it.startsWith(PREFIX) }?.removePrefix(PREFIX)?.split('+')?.takeIf { it.size == 2 }?.let { it[0] to it[1] }
+    fun isCombo(key: String?) = parts(key) != null
 }
 
 interface RecordRepository {

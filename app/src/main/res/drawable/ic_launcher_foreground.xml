@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MoneyRecords mark: a dot-matrix bar chart rising left to right; the top dot is the red accent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- column 1 -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M32,72a4,4 0 1,0 8,0a4,4 0 1,0 -8,0z" />
+    <!-- column 2 -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M44,72a4,4 0 1,0 8,0a4,4 0 1,0 -8,0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M44,60a4,4 0 1,0 8,0a4,4 0 1,0 -8,0z" />
+    <!-- column 3 -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M56,72a4,4 0 1,0 8,0a4,4 0 1,0 -8,0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M56,60a4,4 0 1,0 8,0a4,4 0 1,0 -8,0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M56,48a4,4 0 1,0 8,0a4,4 0 1,0 -8,0z" />
+    <!-- column 4 -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M68,72a4,4 0 1,0 8,0a4,4 0 1,0 -8,0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M68,60a4,4 0 1,0 8,0a4,4 0 1,0 -8,0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M68,48a4,4 0 1,0 8,0a4,4 0 1,0 -8,0z" />
+    <path android:fillColor="#FFE5322D" android:pathData="M68,36a4,4 0 1,0 8,0a4,4 0 1,0 -8,0z" />
+</vector>

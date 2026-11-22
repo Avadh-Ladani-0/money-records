@@ -1,0 +1,48 @@
+package com.moneyrecords.app.di
+
+import android.content.Context
+import androidx.room.Room
+import com.moneyrecords.app.data.db.MoneyRecordsDatabase
+import com.moneyrecords.app.data.db.SeedCallback
+import com.moneyrecords.app.data.repository.RoomAccountRepository
+import com.moneyrecords.app.data.repository.RoomBudgetRepository
+import com.moneyrecords.app.data.repository.RoomCategoryRepository
+import com.moneyrecords.app.data.repository.RoomRecordRepository
+import com.moneyrecords.app.data.repository.RoomRecurringRepository
+import com.moneyrecords.app.domain.repository.AccountRepository
+import com.moneyrecords.app.domain.repository.BudgetRepository
+import com.moneyrecords.app.domain.repository.CategoryRepository
+import com.moneyrecords.app.domain.repository.RecordRepository
+import com.moneyrecords.app.domain.repository.RecurringRepository
+import dagger.Binds
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import java.time.Clock
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+object DatabaseModule {
+    @Provides @Singleton
+    fun database(@ApplicationContext context: Context): MoneyRecordsDatabase =
+        Room.databaseBuilder(context, MoneyRecordsDatabase::class.java, MoneyRecordsDatabase.NAME)
+            .addCallback(SeedCallback())
+            .build()
+
+    /** Injected so tests can pin "now" and the time zone. */
+    @Provides @Singleton
+    fun clock(): Clock = Clock.systemDefaultZone()
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class RepositoryModule {
+    @Binds abstract fun accounts(impl: RoomAccountRepository): AccountRepository
+    @Binds abstract fun categories(impl: RoomCategoryRepository): CategoryRepository
+    @Binds abstract fun records(impl: RoomRecordRepository): RecordRepository
+    @Binds abstract fun recurring(impl: RoomRecurringRepository): RecurringRepository
+    @Binds abstract fun budgets(impl: RoomBudgetRepository): BudgetRepository
+}

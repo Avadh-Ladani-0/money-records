@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.EventRepeat
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.CurrencyRupee
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.GridView
@@ -36,6 +38,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onOpenDesignSystem: () -> Unit,
     onOpenCategories: () -> Unit,
+    onOpenRecurring: () -> Unit,
+    onOpenNotifications: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val calculatorEnabled by viewModel.calculatorEnabled.collectAsStateWithLifecycle()
@@ -54,6 +58,12 @@ fun SettingsScreen(
         }
         item {
             ListRow(title = "Categories", subtitle = "Add, rename, nest or archive", icon = Icons.Outlined.Category, onClick = onOpenCategories)
+        }
+        item {
+            ListRow(title = "Recurring", subtitle = "Rent, salary, subscriptions", icon = Icons.Outlined.EventRepeat, onClick = onOpenRecurring)
+        }
+        item {
+            ListRow(title = "Notifications", subtitle = "Due items, reminders, budget alerts", icon = Icons.Outlined.Notifications, onClick = onOpenNotifications)
         }
         item {
             ListRow(

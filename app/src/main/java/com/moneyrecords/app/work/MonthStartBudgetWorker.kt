@@ -32,6 +32,7 @@ class MonthStartBudgetCheck @Inject constructor(
         val now = LocalDateTime.now(clock)
         val month = YearMonth.from(now)
         val hadBudgets = !budgets.observeOverview(month.minusMonths(1)).first().isEmpty
+        if (!prefs.notifications().monthStartBudgets) return false
         if (!MonthStartPrompt.shouldPrompt(now, prefs.lastBudgetPrompt(), hadBudgets)) return false
         if (!notifier.canNotify()) return false
         notifier.show(month)

@@ -9,7 +9,14 @@ import com.moneyrecords.app.domain.model.Category
 import com.moneyrecords.app.domain.model.CategoryKind
 import com.moneyrecords.app.domain.model.Record
 import com.moneyrecords.app.domain.model.RecordFilter
+import com.moneyrecords.app.domain.model.Frequency
 import com.moneyrecords.app.domain.model.RecordKind
+import com.moneyrecords.app.domain.model.RecurringRule
+import com.moneyrecords.app.domain.model.RecurringRuleDetails
+import com.moneyrecords.app.domain.recurring.Recurrence
+import com.moneyrecords.app.domain.repository.RecurringRepository
+import com.moneyrecords.app.notify.BudgetAlerts
+import java.time.YearMonth
 import com.moneyrecords.app.domain.money.Money
 import com.moneyrecords.app.domain.repository.AccountRepository
 import com.moneyrecords.app.domain.repository.CategoryRepository
@@ -36,7 +43,42 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import javax.inject.Inject
 
-enum class EditorMode { NEW, EDIT, DUPLICATE }
+enum class EditorMode { NEW, EDIT, DUPLICATE, RECURRING_DUE }
+
+/**
+ * How a new record should come back (null = it doesn't).
+ * - [once]: comes back one time, on [nextDate].
+ * - otherwise repeats every [interval] [frequency]; [nextDate] overrides the natural next date
+ *   (e.g. "on the 5th from next month"), and later dates follow from it.
+ */
+data class RepeatSpec(
+    val frequency: Frequency,
+    val interval: Int = 1,
+    val endDate: LocalDate? = null,
+    val nextDate: LocalDate? = null,
+    val once: Boolean = false,
+) {
+    /** The first date it comes back, for a record dated [recordDate]. */
+    fun nextFrom(recordDate: LocalDate): LocalDate = nextDate ?: if (once) {
+        recordDate.plusMonths(1)
+    } else {
+        Recurrence.next(recordDate, frequency, interval, recordDate)
+    }
+
+    /** The rule this creates for a record dated [recordDate]. */
+    fun toRule(template: RecurringRule, recordDate: LocalDate): RecurringRule {
+        val next = nextFrom(recordDate)
+        return template.copy(
+            frequency = frequency,
+            interval = interval,
+            // A chosen next date becomes the anchor (e.g. the 5th of each month); otherwise keep the
+            // record's own date so month-end handling stays right (31 Jan → 28 Feb → 31 Mar).
+            startDate = if (once || nextDate != null) next else recordDate,
+            endDate = if (once) next else endDate,
+            nextRunDate = next,
+        )
+    }
+}
 
 data class RecordEditorState(
     val mode: EditorMode = EditorMode.NEW,
@@ -56,6 +98,10 @@ data class RecordEditorState(
     val date: LocalDate = LocalDate.MIN,
     val time: LocalTime = LocalTime.MIDNIGHT,
     val note: String = "",
+    /** New records only: makes this a recurring record. */
+    val repeat: RepeatSpec? = null,
+    /** Editing a record created by a repeat: that repeat (kept up to date). */
+    val linkedRule: RecurringRuleDetails? = null,
     val error: String? = null,
     val saving: Boolean = false,
 ) {
@@ -90,13 +136,17 @@ class RecordEditorViewModel @Inject constructor(
     private val accounts: AccountRepository,
     private val categories: CategoryRepository,
     private val prefs: UserPrefsRepository,
+    private val recurring: RecurringRepository,
+    private val alerts: BudgetAlerts,
     private val clock: Clock,
 ) : ViewModel() {
     private val recordId: Long = handle.get<Long>(RouteArgs.RECORD_ID) ?: 0L
     private val duplicateOf: Long = handle.get<Long>(RouteArgs.DUPLICATE_OF) ?: 0L
+    private val fromRuleId: Long = handle.get<Long>(RouteArgs.FROM_RULE_ID) ?: 0L
     private val mode = when {
         recordId != 0L -> EditorMode.EDIT
         duplicateOf != 0L -> EditorMode.DUPLICATE
+        fromRuleId != 0L -> EditorMode.RECURRING_DUE
         else -> EditorMode.NEW
     }
 
@@ -129,12 +179,35 @@ class RecordEditorViewModel @Inject constructor(
     }
 
     private suspend fun loadInitial() {
+        if (mode == EditorMode.RECURRING_DUE) {
+            val rule = recurring.get(fromRuleId)
+            if (rule == null) {
+                _state.update { it.copy(error = "Recurring item not found") }
+            } else {
+                _state.update {
+                    it.copy(
+                        kind = rule.kind,
+                        amountText = Expression.toPlainText(BigDecimal(rule.amount).movePointLeft(2)),
+                        accountId = rule.accountId,
+                        toAccountId = rule.toAccountId,
+                        categoryId = rule.categoryId,
+                        note = rule.note,
+                        date = rule.nextRunDate,
+                        time = LocalTime.of(9, 0),
+                    )
+                }
+            }
+            loadRecents(_state.value.kind)
+            _state.update { it.copy(loading = false) }
+            return
+        }
         val source = when (mode) {
             EditorMode.EDIT -> records.get(recordId)
             EditorMode.DUPLICATE -> records.get(duplicateOf)
             EditorMode.NEW -> null
         }
         if (source != null) {
+            if (mode == EditorMode.EDIT) source.recurringRuleId?.let(::watchLinkedRule)
             val at = LocalDateTime.ofInstant(source.occurredAt, clock.zone)
             _state.update {
                 it.copy(
@@ -154,6 +227,15 @@ class RecordEditorViewModel @Inject constructor(
         }
         loadRecents(_state.value.kind)
         _state.update { it.copy(loading = false) }
+    }
+
+    /** Shows the repeat this record came from, refreshing after it's edited elsewhere. */
+    private fun watchLinkedRule(ruleId: Long) {
+        viewModelScope.launch {
+            recurring.observeRules().collect { rules ->
+                _state.update { it.copy(linkedRule = rules.firstOrNull { r -> r.rule.id == ruleId }) }
+            }
+        }
     }
 
     private suspend fun loadRecents(kind: RecordKind) {
@@ -249,6 +331,7 @@ class RecordEditorViewModel @Inject constructor(
     fun onDate(date: LocalDate) = _state.update { it.copy(date = date) }
     fun onTime(time: LocalTime) = _state.update { it.copy(time = time) }
     fun onNote(note: String) = _state.update { it.copy(note = note.take(200)) }
+    fun onRepeat(repeat: RepeatSpec?) = _state.update { it.copy(repeat = repeat) }
 
     fun save() {
         val s = _state.value
@@ -274,7 +357,23 @@ class RecordEditorViewModel @Inject constructor(
                 occurredAt = LocalDateTime.of(s.date, s.time).atZone(clock.zone).toInstant(),
                 note = s.note,
             )
-            runCatching { records.save(record) }
+            runCatching {
+                when {
+                    // Confirms the due occurrence (and moves the rule to its next date).
+                    mode == EditorMode.RECURRING_DUE -> recurring.confirm(fromRuleId, record)
+                    s.repeat != null && mode != EditorMode.EDIT -> {
+                        val template = RecurringRule(
+                            kind = record.kind, amount = record.amount, accountId = record.accountId,
+                            toAccountId = record.toAccountId, categoryId = record.categoryId, note = record.note,
+                            frequency = s.repeat.frequency, startDate = s.date,
+                        )
+                        val ruleId = recurring.save(s.repeat.toRule(template, s.date))
+                        records.save(record.copy(recurringRuleId = ruleId))
+                    }
+                    else -> records.save(record)
+                }
+                alerts.checkAfterRecord(YearMonth.from(s.date))
+            }
                 .onSuccess {
                     prefs.rememberRecordDefaults(
                         s.kind,

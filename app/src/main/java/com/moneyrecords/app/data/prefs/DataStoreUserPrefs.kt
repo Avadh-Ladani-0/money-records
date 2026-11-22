@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.moneyrecords.app.domain.repository.NotificationPrefs
 import androidx.datastore.preferences.preferencesDataStore
 import com.moneyrecords.app.domain.model.RecordKind
 import com.moneyrecords.app.domain.repository.CalculatorPrefs
@@ -34,6 +36,14 @@ class DataStoreUserPrefs @Inject constructor(
     private fun toAccountKey(kind: RecordKind) = longPreferencesKey("last_to_account_${kind.name}")
     private fun categoryKey(kind: RecordKind) = longPreferencesKey("last_category_${kind.name}")
     private val lastBudgetPromptKey = intPreferencesKey("last_budget_prompt")
+    private val nRecurring = booleanPreferencesKey("notify_recurring_due")
+    private val nUpcoming = booleanPreferencesKey("notify_upcoming_bills")
+    private val nDaily = booleanPreferencesKey("notify_daily_reminder")
+    private val nHour = intPreferencesKey("notify_reminder_hour")
+    private val nMinute = intPreferencesKey("notify_reminder_minute")
+    private val nBudgets = booleanPreferencesKey("notify_budget_alerts")
+    private val nMonthStart = booleanPreferencesKey("notify_month_start")
+    private val sentKeys = stringSetPreferencesKey("sent_notifications")
     private val calcEnabled = booleanPreferencesKey("calc_enabled")
     private val calcX = floatPreferencesKey("calc_x")
     private val calcY = floatPreferencesKey("calc_y")
@@ -65,6 +75,49 @@ class DataStoreUserPrefs @Inject constructor(
         store.edit { it[lastBudgetPromptKey] = MonthRange.key(month) }
     }
 
+    private fun Preferences.toNotificationPrefs(): NotificationPrefs {
+        val d = NotificationPrefs()
+        return NotificationPrefs(
+            recurringDue = this[nRecurring] ?: d.recurringDue,
+            upcomingBills = this[nUpcoming] ?: d.upcomingBills,
+            dailyReminder = this[nDaily] ?: d.dailyReminder,
+            reminderHour = this[nHour] ?: d.reminderHour,
+            reminderMinute = this[nMinute] ?: d.reminderMinute,
+            budgetAlerts = this[nBudgets] ?: d.budgetAlerts,
+            monthStartBudgets = this[nMonthStart] ?: d.monthStartBudgets,
+        )
+    }
+
+    override fun observeNotifications(): Flow<NotificationPrefs> = store.data.map { it.toNotificationPrefs() }
+
+    override suspend fun notifications(): NotificationPrefs = store.data.first().toNotificationPrefs()
+
+    override suspend fun updateNotifications(change: (NotificationPrefs) -> NotificationPrefs) {
+        store.edit { prefs ->
+            val n = change(prefs.toNotificationPrefs())
+            prefs[nRecurring] = n.recurringDue
+            prefs[nUpcoming] = n.upcomingBills
+            prefs[nDaily] = n.dailyReminder
+            prefs[nHour] = n.reminderHour.coerceIn(0, 23)
+            prefs[nMinute] = n.reminderMinute.coerceIn(0, 59)
+            prefs[nBudgets] = n.budgetAlerts
+            prefs[nMonthStart] = n.monthStartBudgets
+        }
+    }
+
+    override suspend fun markSent(key: String): Boolean {
+        var added = false
+        store.edit { prefs ->
+            val current = prefs[sentKeys].orEmpty()
+            if (key !in current) {
+                added = true
+                // Keep the set small: the newest few hundred keys are plenty to avoid repeats.
+                prefs[sentKeys] = (current.toList().takeLast(MAX_SENT_KEYS - 1) + key).toSet()
+            }
+        }
+        return added
+    }
+
     override fun observeCalculator(): Flow<CalculatorPrefs> = store.data.map { prefs ->
         val default = CalculatorPrefs()
         CalculatorPrefs(
@@ -83,5 +136,9 @@ class DataStoreUserPrefs @Inject constructor(
             it[calcX] = x.coerceIn(0f, 1f)
             it[calcY] = y.coerceIn(0f, 1f)
         }
+    }
+
+    private companion object {
+        const val MAX_SENT_KEYS = 400
     }
 }

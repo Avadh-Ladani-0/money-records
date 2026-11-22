@@ -18,6 +18,17 @@ data class CalculatorPrefs(
     val y: Float = 0.62f,
 )
 
+/** Which notifications are on, and when the daily reminder fires. */
+data class NotificationPrefs(
+    val recurringDue: Boolean = true,
+    val upcomingBills: Boolean = true,
+    val dailyReminder: Boolean = true,
+    val reminderHour: Int = 21,
+    val reminderMinute: Int = 0,
+    val budgetAlerts: Boolean = true,
+    val monthStartBudgets: Boolean = true,
+)
+
 interface UserPrefsRepository {
     suspend fun recordDefaults(kind: RecordKind): RecordDefaults
     suspend fun rememberRecordDefaults(kind: RecordKind, defaults: RecordDefaults)
@@ -25,6 +36,16 @@ interface UserPrefsRepository {
     /** The month we last asked "keep last month's budgets?" for (null = never). */
     suspend fun lastBudgetPrompt(): YearMonth?
     suspend fun setLastBudgetPrompt(month: YearMonth)
+
+    fun observeNotifications(): Flow<NotificationPrefs>
+    suspend fun notifications(): NotificationPrefs
+    suspend fun updateNotifications(change: (NotificationPrefs) -> NotificationPrefs)
+
+    /**
+     * Remembers notifications already sent (e.g. "due:12:2026-12-01", "budget:…:202612:80") so they
+     * aren't repeated. Returns true if [key] was new (and is now recorded).
+     */
+    suspend fun markSent(key: String): Boolean
 
     fun observeCalculator(): Flow<CalculatorPrefs>
     suspend fun setCalculatorEnabled(enabled: Boolean)

@@ -54,6 +54,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import com.moneyrecords.app.ui.feature.record.RecordEditorScreen
 import com.moneyrecords.app.ui.feature.records.RecordsScreen
 import com.moneyrecords.app.ui.feature.settings.SettingsScreen
+import com.moneyrecords.app.ui.feature.settings.NotificationSettingsScreen
+import com.moneyrecords.app.ui.feature.recurring.RecurringEditorScreen
+import com.moneyrecords.app.ui.feature.recurring.RecurringScreen
 import kotlinx.coroutines.launch
 import kotlin.reflect.KClass
 
@@ -69,7 +72,7 @@ private fun NavDestination?.isOn(routeClass: KClass<*>) =
 
 @Composable
 fun MoneyRecordsRoot(
-    openBudgetsRequests: Flow<Unit> = emptyFlow(),
+    requests: Flow<AppRequest> = emptyFlow(),
     appViewModel: AppViewModel = hiltViewModel(),
 ) {
     val navController = rememberNavController()
@@ -81,11 +84,15 @@ fun MoneyRecordsRoot(
 
     val calculator by appViewModel.calculator.collectAsStateWithLifecycle()
     // Notification "✗ Edit" → Budgets tab (for the current month).
-    LaunchedEffect(openBudgetsRequests) {
-        openBudgetsRequests.collect {
-            navController.navigate(BudgetsRoute) {
-                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                launchSingleTop = true
+    LaunchedEffect(requests) {
+        requests.collect { request ->
+            when (request) {
+                AppRequest.OpenBudgets -> navController.navigate(BudgetsRoute) {
+                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                    launchSingleTop = true
+                }
+                AppRequest.AddRecord -> navController.navigate(RecordEditorRoute())
+                is AppRequest.EditDue -> navController.navigate(RecordEditorRoute(fromRuleId = request.ruleId))
             }
         }
     }
@@ -153,6 +160,7 @@ fun MoneyRecordsRoot(
                             }
                         },
                         onAddAccount = { navController.navigate(AccountEditorRoute()) },
+                        onEditDue = { id -> navController.navigate(RecordEditorRoute(fromRuleId = id)) },
                         onOpenBudgets = {
                             navController.navigate(BudgetsRoute) {
                                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -183,6 +191,7 @@ fun MoneyRecordsRoot(
                             }
                         },
                         onAddAccount = { navController.navigate(AccountEditorRoute()) },
+                        onOpenRecurring = { id -> navController.navigate(RecurringEditorRoute(id)) },
                     )
                 }
                 composable<AccountEditorRoute> {
@@ -194,6 +203,8 @@ fun MoneyRecordsRoot(
                         onBack = { navController.popBackStack() },
                         onOpenDesignSystem = { navController.navigate(DesignSystemRoute) },
                         onOpenCategories = { navController.navigate(CategoriesRoute) },
+                        onOpenRecurring = { navController.navigate(RecurringRoute) },
+                        onOpenNotifications = { navController.navigate(NotificationSettingsRoute) },
                     )
                 }
                 composable<CategoriesRoute> {
@@ -207,6 +218,11 @@ fun MoneyRecordsRoot(
                 composable<CategoryEditorRoute> {
                     CategoryEditorScreen(onClose = { navController.popBackStack() }, onMessage = showMessage)
                 }
+                composable<RecurringRoute> {
+                    RecurringScreen(onBack = { navController.popBackStack() }, onOpen = { id -> navController.navigate(RecurringEditorRoute(id)) })
+                }
+                composable<RecurringEditorRoute> { RecurringEditorScreen(onClose = { navController.popBackStack() }) }
+                composable<NotificationSettingsRoute> { NotificationSettingsScreen(onBack = { navController.popBackStack() }) }
                 composable<DesignSystemRoute> {
                     DesignSystemScreen(onBack = { navController.popBackStack() })
                 }

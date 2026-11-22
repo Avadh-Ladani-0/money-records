@@ -184,6 +184,9 @@ interface RecordDao {
     )
     suspend fun offsetCandidates(accountId: Long?, from: Long, to: Long): List<RecordRow>
 
+    @Query("SELECT COUNT(*) FROM records WHERE occurredAt >= :from AND occurredAt < :to")
+    suspend fun countBetween(from: Long, to: Long): Int
+
     @Query("SELECT * FROM records WHERE id = :id")
     suspend fun get(id: Long): RecordEntity?
 
@@ -202,8 +205,21 @@ interface RecurringRuleDao {
     @Query("SELECT * FROM recurring_rules WHERE id = :id")
     suspend fun get(id: Long): RecurringRuleEntity?
 
-    @Query("SELECT * FROM recurring_rules WHERE active = 1 AND nextRunDate <= :epochDay ORDER BY nextRunDate")
-    suspend fun dueOn(epochDay: Long): List<RecurringRuleEntity>
+    @Query(
+        """
+        SELECT r.*, a.name AS accountName, ta.name AS toAccountName,
+               c.name AS categoryName, c.iconKey AS categoryIconKey
+        FROM recurring_rules r
+        JOIN accounts a ON a.id = r.accountId
+        LEFT JOIN accounts ta ON ta.id = r.toAccountId
+        LEFT JOIN categories c ON c.id = r.categoryId
+        ORDER BY r.active DESC, r.nextRunDate
+        """,
+    )
+    fun observeAllWithNames(): Flow<List<RecurringRuleRow>>
+
+    @Query("UPDATE recurring_rules SET active = :active WHERE id = :id")
+    suspend fun setActive(id: Long, active: Boolean)
 
     @Insert suspend fun insert(rule: RecurringRuleEntity): Long
     @Update suspend fun update(rule: RecurringRuleEntity)

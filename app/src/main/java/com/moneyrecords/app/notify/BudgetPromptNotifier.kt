@@ -1,8 +1,6 @@
 package com.moneyrecords.app.notify
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -34,7 +32,7 @@ class BudgetPromptNotifier @Inject constructor(@ApplicationContext private val c
 
     fun show(month: YearMonth) {
         if (!canNotify()) return
-        ensureChannel()
+        Notifications.ensureChannels(context)
         val previous = month.minusMonths(1).month.getDisplayName(TextStyle.FULL, Locale.getDefault())
         val current = month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())
 
@@ -71,21 +69,10 @@ class BudgetPromptNotifier @Inject constructor(@ApplicationContext private val c
 
     fun dismiss() = NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
 
-    private fun ensureChannel() {
-        val manager = context.getSystemService(NotificationManager::class.java)
-        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Budgets", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "Month-start budget check and budget alerts"
-                },
-            )
-        }
-    }
-
     companion object {
-        const val CHANNEL_ID = "budgets"
+        const val CHANNEL_ID = Notifications.CHANNEL_BUDGETS
         const val NOTIFICATION_ID = 4001
-        const val ACTION_OPEN_BUDGETS = "com.moneyrecords.app.action.OPEN_BUDGETS"
+        const val ACTION_OPEN_BUDGETS = Notifications.ACTION_OPEN_BUDGETS
         const val ACTION_KEEP = "com.moneyrecords.app.action.KEEP_BUDGETS"
         private const val REQUEST_EDIT = 1
         private const val REQUEST_KEEP = 2

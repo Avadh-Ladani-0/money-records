@@ -22,6 +22,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneyrecords.app.domain.money.Money
+import com.moneyrecords.app.domain.model.DueOccurrence
+import com.moneyrecords.app.domain.model.RecordKind
+import com.moneyrecords.app.ui.components.ListRow
+import com.moneyrecords.app.ui.icons.CategoryIcon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.CompareArrows
+import androidx.compose.material3.Icon
 import com.moneyrecords.app.ui.components.AmountText
 import com.moneyrecords.app.ui.components.DotProgress
 import com.moneyrecords.app.ui.components.EmptyState
@@ -50,6 +57,7 @@ fun HomeScreen(
     onSeeAllRecords: () -> Unit,
     onAddAccount: () -> Unit,
     onOpenBudgets: () -> Unit,
+    onEditDue: (Long) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -111,6 +119,22 @@ fun HomeScreen(
             }
         }
 
+        if (state.due.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(Space.xxl))
+                SectionLabel("Due · recurring")
+                Spacer(Modifier.height(Space.xs))
+            }
+            items(state.due, key = { "due-${it.details.rule.id}" }) { occurrence ->
+                DueRow(
+                    occurrence,
+                    onAdd = { viewModel.addDue(occurrence) },
+                    onSkip = { viewModel.skipDue(occurrence) },
+                    onOpen = { onEditDue(occurrence.details.rule.id) },
+                )
+            }
+        }
+
         item {
             Spacer(Modifier.height(Space.xxl))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -146,4 +170,36 @@ fun HomeScreen(
         }
         item { Spacer(Modifier.height(96.dp)) }
     }
+}
+
+@Composable
+private fun DueRow(occurrence: DueOccurrence, onAdd: () -> Unit, onSkip: () -> Unit, onOpen: () -> Unit) {
+    val d = occurrence.details
+    ListRow(
+        title = d.title,
+        subtitle = "Due ${occurrence.date.friendly()} · ${d.accountName}",
+        leading = {
+            if (d.rule.kind == RecordKind.TRANSFER) Icon(Icons.AutoMirrored.Outlined.CompareArrows, contentDescription = null)
+            else CategoryIcon(d.categoryIconKey)
+        },
+        onClick = onOpen,
+        trailing = {
+            Column(horizontalAlignment = Alignment.End) {
+                AmountText(
+                    if (d.rule.kind == RecordKind.EXPENSE) -d.rule.amount else d.rule.amount,
+                    sign = if (d.rule.kind == RecordKind.TRANSFER) Money.Sign.NONE else Money.Sign.ALWAYS,
+                    color = when (d.rule.kind) {
+                        RecordKind.EXPENSE -> MrTheme.colors.negative
+                        RecordKind.INCOME -> MrTheme.colors.positive
+                        RecordKind.TRANSFER -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Row {
+                    TextButton(onClick = onSkip) { Text("Skip", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    TextButton(onClick = onAdd) { Text("Add", color = MrTheme.colors.accent) }
+                }
+            }
+        },
+    )
 }

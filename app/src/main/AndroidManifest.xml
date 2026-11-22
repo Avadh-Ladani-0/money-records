@@ -28,6 +28,10 @@
             android:name=".notify.BudgetPromptReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".notify.NotificationActionReceiver"
+            android:exported="false" />
+
         <!-- WorkManager is initialised by MoneyRecordsApp with Hilt's worker factory. -->
         <provider
             android:name="androidx.startup.InitializationProvider"

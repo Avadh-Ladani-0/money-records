@@ -2,6 +2,19 @@ package com.moneyrecords.app.ui.feature.record
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
+import com.moneyrecords.app.domain.recurring.Recurrence
+import com.moneyrecords.app.domain.model.RecurringRuleDetails
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.EventRepeat
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +26,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
@@ -59,6 +73,7 @@ import com.moneyrecords.app.ui.components.PickerField
 import com.moneyrecords.app.ui.components.PillButton
 import com.moneyrecords.app.ui.components.SegmentedPills
 import com.moneyrecords.app.ui.components.ValueChip
+import com.moneyrecords.app.ui.components.rememberNotificationPermissionRequest
 import com.moneyrecords.app.ui.theme.InterFamily
 import com.moneyrecords.app.ui.theme.MrTheme
 import com.moneyrecords.app.ui.theme.Space
@@ -78,6 +93,7 @@ fun RecordEditorScreen(
     onClose: () -> Unit,
     onDeleted: (Record) -> Unit,
     onAddAccount: () -> Unit,
+    onOpenRecurring: (Long) -> Unit,
     viewModel: RecordEditorViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -85,6 +101,8 @@ fun RecordEditorScreen(
     var pickDate by remember { mutableStateOf(false) }
     var pickTime by remember { mutableStateOf(false) }
     var pickCategory by remember { mutableStateOf(false) }
+    var pickRepeat by remember { mutableStateOf(false) }
+    val askNotificationPermission = rememberNotificationPermissionRequest()
     // While the system keyboard is up (typing a note) the keypad steps aside.
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
@@ -103,6 +121,7 @@ fun RecordEditorScreen(
                 EditorMode.NEW -> "New record"
                 EditorMode.EDIT -> "Edit record"
                 EditorMode.DUPLICATE -> "Duplicate record"
+                EditorMode.RECURRING_DUE -> "Recurring record"
             },
             onClose = onClose,
             onDelete = if (state.mode == EditorMode.EDIT) ({ confirmDelete = true }) else null,
@@ -154,9 +173,20 @@ fun RecordEditorScreen(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                 ValueChip(state.date.friendly(), Icons.Outlined.CalendarToday, onClick = { pickDate = true })
                 ValueChip(state.time.format(DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())), Icons.Outlined.Schedule, onClick = { pickTime = true })
+            }
+            state.linkedRule?.let { linked ->
+                LinkedRepeatRow(linked, onOpen = { onOpenRecurring(linked.rule.id) })
+            }
+            if (state.mode == EditorMode.NEW || state.mode == EditorMode.DUPLICATE) {
+                RepeatRow(
+                    repeat = state.repeat,
+                    recordDate = state.date,
+                    onTick = { checked -> if (checked) pickRepeat = true else viewModel.onRepeat(null) },
+                    onEdit = { pickRepeat = true },
+                )
             }
 
             MrTextField(value = state.note, onValueChange = viewModel::onNote, label = "Note")
@@ -173,8 +203,16 @@ fun RecordEditorScreen(
             AmountDisplay(state)
             AnimatedVisibility(visible = !imeVisible) { AmountKeypad(onKey = viewModel::onKey) }
             PillButton(
-                text = if (state.mode == EditorMode.EDIT) "Save changes" else "Save",
-                onClick = viewModel::save,
+                text = when (state.mode) {
+                    EditorMode.EDIT -> "Save changes"
+                    EditorMode.RECURRING_DUE -> "Add"
+                    else -> "Save"
+                },
+                onClick = {
+                    // Repeating records notify when due, so make sure notifications are allowed.
+                    if (state.repeat != null) askNotificationPermission()
+                    viewModel.save()
+                },
                 enabled = state.canSave,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -192,6 +230,9 @@ fun RecordEditorScreen(
             onCombine = viewModel::combineCategories,
             onDismiss = { pickCategory = false },
         )
+    }
+    if (pickRepeat) {
+        RepeatSheet(current = state.repeat, start = state.date, onDone = viewModel::onRepeat, onDismiss = { pickRepeat = false })
     }
     if (confirmDelete) {
         AlertDialog(
@@ -277,4 +318,70 @@ fun LocalDate.friendly(today: LocalDate = LocalDate.now()): String = when (this)
     today -> "Today"
     today.minusDays(1) -> "Yesterday"
     else -> format(DateTimeFormatter.ofPattern(if (year == today.year) "EEE, d MMM" else "d MMM yyyy", Locale.getDefault()))
+}
+
+/**
+ * "☐ Repeat" tick box. Ticking opens the recurrence window; once set, the details show beside it
+ * ("Monthly on the 5th · next 5 Dec") and tapping them edits. Unticking makes it a one-time record.
+ */
+@Composable
+private fun RepeatRow(repeat: RepeatSpec?, recordDate: LocalDate, onTick: (Boolean) -> Unit, onEdit: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .toggleable(value = repeat != null, role = Role.Checkbox, onValueChange = { onTick(it) }),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = repeat != null, onCheckedChange = null)
+        Text("Repeat", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = Space.xs))
+        if (repeat != null) {
+            Text(
+                " · " + repeat.describe(recordDate),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).clickable(onClick = onEdit),
+            )
+            IconButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, contentDescription = "Edit repeat") }
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
+    }
+}
+
+/**
+ * Editing a record that a repeat created: "↻ Repeats · Monthly on the 22nd · next 22 Dec ›".
+ * One tap opens that repeat's editor. Changing the repeat never changes this record.
+ */
+@Composable
+private fun LinkedRepeatRow(linked: RecurringRuleDetails, onOpen: () -> Unit) {
+    val rule = linked.rule
+    val ended = !rule.active && rule.endDate != null && rule.nextRunDate.isAfter(rule.endDate)
+    val status = when {
+        ended -> "ended"
+        !rule.active -> "paused"
+        Recurrence.isOnce(rule) -> null
+        else -> "next ${Recurrence.shortDate(rule.nextRunDate)}"
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onOpen)
+            .padding(vertical = Space.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.EventRepeat, contentDescription = null, modifier = Modifier.padding(horizontal = Space.md))
+        Column(Modifier.weight(1f)) {
+            Text("Repeats", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                listOfNotNull(Recurrence.describe(rule), status).joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = "Edit repeat")
+    }
 }

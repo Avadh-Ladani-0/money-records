@@ -13,8 +13,15 @@ import kotlinx.serialization.Serializable
 @Serializable data object DesignSystemRoute
 @Serializable data object CategoriesRoute
 
-/** recordId > 0 edits; duplicateOf > 0 pre-fills a new record from an existing one. */
-@Serializable data class RecordEditorRoute(val recordId: Long = 0, val duplicateOf: Long = 0)
+/**
+ * recordId > 0 edits; duplicateOf > 0 pre-fills a new record from an existing one;
+ * fromRuleId > 0 pre-fills from a due recurring item and confirms it on save.
+ */
+@Serializable data class RecordEditorRoute(val recordId: Long = 0, val duplicateOf: Long = 0, val fromRuleId: Long = 0)
+
+@Serializable data object RecurringRoute
+@Serializable data class RecurringEditorRoute(val ruleId: Long)
+@Serializable data object NotificationSettingsRoute
 
 @Serializable data class AccountEditorRoute(val accountId: Long = 0)
 
@@ -24,6 +31,8 @@ import kotlinx.serialization.Serializable
 object RouteArgs {
     const val RECORD_ID = "recordId"
     const val DUPLICATE_OF = "duplicateOf"
+    const val FROM_RULE_ID = "fromRuleId"
+    const val RULE_ID = "ruleId"
     const val ACCOUNT_ID = "accountId"
     const val CATEGORY_ID = "categoryId"
     const val KIND = "kind"

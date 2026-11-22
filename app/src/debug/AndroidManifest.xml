@@ -8,6 +8,8 @@
             <intent-filter>
                 <action android:name="com.moneyrecords.app.debug.SHOW_BUDGET_PROMPT" />
                 <action android:name="com.moneyrecords.app.debug.RUN_MONTH_START_CHECK" />
+                <action android:name="com.moneyrecords.app.debug.RUN_RECURRING_CHECK" />
+                <action android:name="com.moneyrecords.app.debug.RUN_DAILY_REMINDER" />
             </intent-filter>
         </receiver>
     </application>

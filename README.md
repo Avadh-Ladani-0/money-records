@@ -8,7 +8,7 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 - **Design**: minimalist monochrome with a single red accent and dot-matrix numbers, in light and dark themes.
 
 > Status: early development (v0.1.0). Accounts, records, the Records tab with filters and search,
-> categories, monthly budgets and a floating calculator work. Recurring records and reminders come next.
+> categories, monthly budgets, recurring records, reminders and a floating calculator work.
 
 ## Features so far
 
@@ -29,6 +29,13 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
   out) or for **Other accounts**. When editing any budget you can tick income records (and, for an
   account, transfers into it) to **count back** — e.g. a refund or a card bill payment. On the 1st of each month a notification asks whether to keep last month's
   budgets — ✓ Keep, or ✗ Edit to open the Budgets tab.
+- **Recurring records**: tap **Repeat** when adding a record (daily, weekly, monthly, yearly, every N,
+  optional end date). When one is due you get a notification — **✓ Add**, **Skip** or **Edit** — and it
+  also waits on Home under **Due**; nothing is recorded until you confirm. Manage them in
+  Settings → Recurring (edit, pause, delete).
+- **Reminders**: a daily "log today's spending" nudge (default 9 PM, skipped if you've already logged),
+  "due tomorrow" heads-ups for recurring bills, and 80% / over-budget alerts for every budget type.
+  All can be switched off in Settings → Notifications.
 - **Floating calculator**: draggable bubble on every screen with a Copy button; can be turned off in Settings.
 
 ## Roadmap
@@ -39,8 +46,8 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
 | 2 | Data layer: Room database, repositories, default categories, tests | ✅ Done |
 | 3 | Core screens: add/edit record, records list & search, accounts, categories, live Home, floating calculator | ✅ Done |
 | 4 | Budgets: overall, per-category and "everything else" monthly limits, carry-forward, progress | ✅ Done |
-| 5 | Recurring records and reminders (+ budget alerts) | ⏳ Next |
-| 6 | App lock: PIN and fingerprint | Planned |
+| 5 | Recurring records and reminders (+ budget alerts) | ✅ Done |
+| 6 | App lock: PIN and fingerprint | ⏳ Next |
 | 7 | Home-screen widget | Planned |
 | 8 | Backup & restore to a file (free) | Planned |
 | 9 | Polish: motion, haptics, accessibility | Planned |

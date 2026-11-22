@@ -43,6 +43,7 @@ fun RecordItem(
         if (showTime) add(record.occurredAt.atZone(zone).format(timeFormat))
         add(where)
         if (record.note.isNotBlank()) add(record.note)
+        if (record.recurringRuleId != null) add("↻")
     }
     ListRow(
         title = title,

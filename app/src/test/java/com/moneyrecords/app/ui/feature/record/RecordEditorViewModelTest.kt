@@ -6,7 +6,9 @@ import com.moneyrecords.app.domain.model.RecordKind
 import com.moneyrecords.app.domain.repository.RecordDefaults
 import com.moneyrecords.app.testing.FakeAccounts
 import com.moneyrecords.app.testing.FakeCategories
+import com.moneyrecords.app.testing.FakeAlerts
 import com.moneyrecords.app.testing.FakePrefs
+import com.moneyrecords.app.testing.FakeRecurring
 import com.moneyrecords.app.testing.FakeRecords
 import com.moneyrecords.app.testing.TestData
 import com.moneyrecords.app.ui.components.KeypadKey
@@ -34,11 +36,15 @@ class RecordEditorViewModelTest {
     private val clock = Clock.fixed(Instant.parse("2026-11-22T06:00:00Z"), zone) // 11:30 IST
     private lateinit var records: FakeRecords
     private lateinit var prefs: FakePrefs
+    private lateinit var recurring: FakeRecurring
+    private lateinit var alerts: FakeAlerts
 
     @Before fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         records = FakeRecords()
         prefs = FakePrefs()
+        recurring = FakeRecurring(records)
+        alerts = FakeAlerts()
     }
 
     @After fun tearDown() = Dispatchers.resetMain()
@@ -49,6 +55,8 @@ class RecordEditorViewModelTest {
         FakeAccounts(listOf(TestData.cash, TestData.bank)),
         FakeCategories(TestData.trees),
         prefs,
+        recurring,
+        alerts,
         clock,
     )
 
@@ -195,5 +203,73 @@ class RecordEditorViewModelTest {
         assertEquals("Fuel-Food", combined.name)
         assertEquals(TestData.fuel.id, combined.parentId)
         assertEquals("combo:fuel+food", combined.iconKey)
+    }
+
+    @Test fun `repeat creates a rule linked to the first record and checks budgets`() {
+        val vm = vm()
+        vm.type("15000")
+        vm.onCategory(TestData.fuel.id)
+        vm.onRepeat(RepeatSpec(com.moneyrecords.app.domain.model.Frequency.MONTHLY))
+        vm.save()
+        val rule = recurring.rules.value.single()
+        assertEquals(15_000_00L, rule.amount)
+        assertEquals(LocalDate.of(2026, 11, 22), rule.startDate)
+        assertEquals(LocalDate.of(2026, 12, 22), rule.nextRunDate)
+        assertEquals(rule.id, records.records.value.single().recurringRuleId)
+        assertEquals(listOf(java.time.YearMonth.of(2026, 11)), alerts.checked)
+    }
+
+    @Test fun `editing a due recurring item confirms it with the edited amount`() {
+        val start = LocalDate.of(2026, 11, 1)
+        recurring.rules.value = listOf(
+            com.moneyrecords.app.domain.model.RecurringRule(
+                id = 5, kind = RecordKind.EXPENSE, amount = 2_000_00, accountId = TestData.cash.id, categoryId = TestData.fuel.id,
+                frequency = com.moneyrecords.app.domain.model.Frequency.MONTHLY, startDate = start, nextRunDate = start,
+            ),
+        )
+        val vm = vm(RouteArgs.FROM_RULE_ID to 5L)
+        assertEquals(EditorMode.RECURRING_DUE, vm.state.value.mode)
+        assertEquals(start, vm.state.value.date)
+        vm.onKey(KeypadKey.Clear); vm.type("2350")
+        vm.save()
+        val saved = records.records.value.single()
+        assertEquals(2_350_00L, saved.amount)
+        assertEquals(5L, saved.recurringRuleId)
+        assertEquals(LocalDate.of(2026, 12, 1), recurring.rules.value.single().nextRunDate)
+    }
+
+    @Test fun `once on a date creates a one-time rule`() {
+        val vm = vm()
+        vm.type("4000")
+        vm.onCategory(TestData.fuel.id)
+        vm.onRepeat(RepeatSpec(com.moneyrecords.app.domain.model.Frequency.MONTHLY, nextDate = LocalDate.of(2027, 3, 15), once = true))
+        vm.save()
+        val rule = recurring.rules.value.single()
+        assertEquals(LocalDate.of(2027, 3, 15), rule.nextRunDate)
+        assertEquals(rule.startDate, rule.endDate)
+        assertTrue(com.moneyrecords.app.domain.recurring.Recurrence.isOnce(rule))
+    }
+
+    @Test fun `editing a record from a repeat shows that repeat`() {
+        val start = LocalDate.of(2026, 11, 22)
+        recurring.rules.value = listOf(
+            com.moneyrecords.app.domain.model.RecurringRule(
+                id = 3, kind = RecordKind.EXPENSE, amount = 4_000_00, accountId = TestData.cash.id, categoryId = TestData.fuel.id,
+                frequency = com.moneyrecords.app.domain.model.Frequency.MONTHLY, startDate = start, nextRunDate = start.plusMonths(1),
+            ),
+        )
+        records.records.value = listOf(
+            Record(id = 9, kind = RecordKind.EXPENSE, amount = 4_000_00, accountId = TestData.cash.id, categoryId = TestData.fuel.id,
+                occurredAt = Instant.parse("2026-11-22T06:00:00Z"), recurringRuleId = 3),
+        )
+        val vm = vm(RouteArgs.RECORD_ID to 9L)
+        assertEquals(3L, vm.state.value.linkedRule?.rule?.id)
+        // Changing the repeat elsewhere refreshes what the editor shows.
+        recurring.rules.value = recurring.rules.value.map { it.copy(active = false) }
+        assertEquals(false, vm.state.value.linkedRule?.rule?.active)
+        // A plain record has no linked repeat.
+        records.records.value = records.records.value + Record(id = 10, kind = RecordKind.EXPENSE, amount = 100, accountId = TestData.cash.id,
+            categoryId = TestData.fuel.id, occurredAt = Instant.parse("2026-11-22T06:00:00Z"))
+        assertEquals(null, vm(RouteArgs.RECORD_ID to 10L).state.value.linkedRule)
     }
 }

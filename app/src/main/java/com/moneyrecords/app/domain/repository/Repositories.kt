@@ -12,7 +12,9 @@ import com.moneyrecords.app.domain.model.MonthSummary
 import com.moneyrecords.app.domain.model.Record
 import com.moneyrecords.app.domain.model.RecordDetails
 import com.moneyrecords.app.domain.model.RecordFilter
+import com.moneyrecords.app.domain.model.DueOccurrence
 import com.moneyrecords.app.domain.model.RecurringRule
+import com.moneyrecords.app.domain.model.RecurringRuleDetails
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 import java.time.YearMonth
@@ -59,16 +61,30 @@ interface RecordRepository {
     fun observeRecords(filter: RecordFilter = RecordFilter()): Flow<List<RecordDetails>>
     fun observeMonthSummary(month: YearMonth): Flow<MonthSummary>
     suspend fun get(id: Long): Record?
+    /** Number of records dated on [date] (local time). */
+    suspend fun countOn(date: LocalDate): Int
     /** Validates, then inserts when [Record.id] is 0 or updates. Returns the id. */
     suspend fun save(record: Record): Long
     suspend fun delete(id: Long)
 }
 
 interface RecurringRepository {
-    fun observeRules(): Flow<List<RecurringRule>>
+    /** All rules with names, active first, soonest first. */
+    fun observeRules(): Flow<List<RecurringRuleDetails>>
     suspend fun get(id: Long): RecurringRule?
-    suspend fun dueOn(date: LocalDate): List<RecurringRule>
+    suspend fun getDetails(id: Long): RecurringRuleDetails?
+    /** Occurrences due on or before [today] (missed ones included), oldest first. */
+    fun observeDue(today: LocalDate): Flow<List<DueOccurrence>>
     suspend fun save(rule: RecurringRule): Long
+    /**
+     * Records the rule's earliest due occurrence and moves it to the next date, in one transaction.
+     * [override] replaces the planned record (e.g. a different amount from "Edit"). Returns the record id.
+     */
+    suspend fun confirm(ruleId: Long, override: Record? = null): Long
+    /** Skips the earliest due occurrence without recording it. */
+    suspend fun skip(ruleId: Long)
+    suspend fun setActive(id: Long, active: Boolean)
+    /** Deletes the rule; records it created stay (they just lose the link). */
     suspend fun delete(id: Long)
 }
 

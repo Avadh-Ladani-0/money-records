@@ -28,6 +28,9 @@ import com.moneyrecords.app.domain.model.RecordDetails
 import com.moneyrecords.app.domain.model.RecordFilter
 import com.moneyrecords.app.domain.model.RecordKind
 import com.moneyrecords.app.domain.model.RecurringRule
+import com.moneyrecords.app.domain.recurring.Recurrence
+import com.moneyrecords.app.domain.model.RecurringRuleDetails
+import com.moneyrecords.app.domain.model.DueOccurrence
 import com.moneyrecords.app.domain.repository.AccountRepository
 import com.moneyrecords.app.domain.repository.BudgetRepository
 import com.moneyrecords.app.domain.repository.CategoryRepository
@@ -168,6 +171,12 @@ class RoomRecordRepository @Inject constructor(
 
     override suspend fun get(id: Long): Record? = dao.get(id)?.toDomain()
 
+    override suspend fun countOn(date: LocalDate): Int {
+        val start = date.atStartOfDay(clock.zone).toInstant().toEpochMilli()
+        val end = date.plusDays(1).atStartOfDay(clock.zone).toInstant().toEpochMilli()
+        return dao.countBetween(start, end)
+    }
+
     override suspend fun save(record: Record): Long = db.withTransaction {
         validate(record)
         val now = clock.millis()
@@ -210,23 +219,69 @@ class RoomRecordRepository @Inject constructor(
 
 class RoomRecurringRepository @Inject constructor(
     private val db: MoneyRecordsDatabase,
+    private val records: RecordRepository,
+    private val clock: Clock,
 ) : RecurringRepository {
     private val dao = db.recurringRuleDao()
 
-    override fun observeRules(): Flow<List<RecurringRule>> = dao.observeAll().map { rows -> rows.map { it.toDomain() } }
+    override fun observeRules(): Flow<List<RecurringRuleDetails>> =
+        dao.observeAllWithNames().map { rows -> rows.map { it.toDomain() } }
 
     override suspend fun get(id: Long): RecurringRule? = dao.get(id)?.toDomain()
 
-    override suspend fun dueOn(date: LocalDate): List<RecurringRule> = dao.dueOn(date.toEpochDay()).map { it.toDomain() }
+    override suspend fun getDetails(id: Long): RecurringRuleDetails? =
+        dao.observeAllWithNames().first().firstOrNull { it.rule.id == id }?.toDomain()
+
+    override fun observeDue(today: LocalDate): Flow<List<DueOccurrence>> = observeRules().map { rules ->
+        rules.flatMap { d -> Recurrence.dueDates(d.rule, today).map { DueOccurrence(d, it) } }.sortedBy { it.date }
+    }
 
     override suspend fun save(rule: RecurringRule): Long {
         require(rule.amount > 0) { "Amount must be more than zero" }
         require(rule.interval >= 1) { "Repeat interval must be at least 1" }
         require(rule.endDate == null || !rule.endDate.isBefore(rule.startDate)) { "End date is before the start date" }
+        if (rule.kind == RecordKind.TRANSFER) {
+            require(rule.toAccountId != null && rule.toAccountId != rule.accountId) { "Transfer needs two different accounts" }
+        }
         return if (rule.id == 0L) dao.insert(rule.toEntity()) else { dao.update(rule.toEntity()); rule.id }
     }
 
+    override suspend fun confirm(ruleId: Long, override: Record?): Long = db.withTransaction {
+        val rule = requireNotNull(dao.get(ruleId)?.toDomain()) { "Recurring item not found" }
+        require(rule.active && Recurrence.withinEnd(rule, rule.nextRunDate)) { "Nothing is due for this item" }
+        val planned = Record(
+            kind = rule.kind,
+            amount = rule.amount,
+            accountId = rule.accountId,
+            toAccountId = rule.toAccountId,
+            categoryId = rule.categoryId,
+            occurredAt = rule.nextRunDate.atTime(DUE_HOUR, 0).atZone(clock.zone).toInstant(),
+            note = rule.note,
+        )
+        val recordId = records.save((override ?: planned).copy(id = 0, recurringRuleId = rule.id))
+        advance(rule)
+        recordId
+    }
+
+    override suspend fun skip(ruleId: Long) = db.withTransaction {
+        val rule = requireNotNull(dao.get(ruleId)?.toDomain()) { "Recurring item not found" }
+        advance(rule)
+    }
+
+    /** Moves the rule past its current occurrence; ends it when the next date is past the end date. */
+    private suspend fun advance(rule: RecurringRule) {
+        val next = Recurrence.next(rule, rule.nextRunDate)
+        dao.update(rule.copy(nextRunDate = next, active = rule.active && Recurrence.withinEnd(rule, next)).toEntity())
+    }
+
+    override suspend fun setActive(id: Long, active: Boolean) = dao.setActive(id, active)
+
     override suspend fun delete(id: Long) = dao.delete(id)
+
+    companion object {
+        /** Due occurrences are recorded at 9:00 on their date. */
+        const val DUE_HOUR = 9
+    }
 }
 
 class RoomBudgetRepository @Inject constructor(

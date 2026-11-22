@@ -152,6 +152,14 @@ data class RecordRow(
 
 data class TotalsRow(val income: Long, val expense: Long)
 
+data class RecurringRuleRow(
+    @Embedded val rule: RecurringRuleEntity,
+    val accountName: String,
+    val toAccountName: String?,
+    val categoryName: String?,
+    val categoryIconKey: String?,
+)
+
 data class CategorySpend(val categoryId: Long, val total: Long)
 
 data class AccountSpend(val accountId: Long, val total: Long)

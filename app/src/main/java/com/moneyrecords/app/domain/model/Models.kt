@@ -134,6 +134,23 @@ data class BudgetTarget(val scope: BudgetScope, val categoryId: Long? = null, va
 /**
  * A monthly limit that applies from [month] onwards until changed or stopped.
  */
+/** A recurring rule with the names the UI shows. */
+data class RecurringRuleDetails(
+    val rule: RecurringRule,
+    val accountName: String,
+    val toAccountName: String?,
+    val categoryName: String?,
+    val categoryIconKey: String?,
+) {
+    /** The note when there is one ("Coffee", "Netflix"), otherwise the category or transfer target. */
+    val title: String
+        get() = rule.note.takeIf { it.isNotBlank() }
+            ?: if (rule.kind == RecordKind.TRANSFER) "Transfer to ${toAccountName ?: "?"}" else categoryName ?: "Recurring"
+}
+
+/** One due occurrence of a recurring rule, waiting for Add / Skip. */
+data class DueOccurrence(val details: RecurringRuleDetails, val date: LocalDate)
+
 data class Budget(
     val id: Long = 0,
     /** Null for OVERALL and REST. */

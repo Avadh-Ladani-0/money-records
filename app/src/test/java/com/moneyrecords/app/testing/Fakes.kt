@@ -93,6 +93,8 @@ class FakeRecords(initial: List<Record> = emptyList()) : RecordRepository {
         MonthSummary(list.filter { it.kind == RecordKind.INCOME }.sumOf { it.amount }, list.filter { it.kind == RecordKind.EXPENSE }.sumOf { it.amount })
     }
     override suspend fun get(id: Long) = records.value.firstOrNull { it.id == id }
+    var zone: java.time.ZoneId = java.time.ZoneId.of("Asia/Kolkata")
+    override suspend fun countOn(date: java.time.LocalDate) = records.value.count { it.occurredAt.atZone(zone).toLocalDate() == date }
     override suspend fun save(record: Record): Long {
         require(record.amount > 0) { "Amount must be more than zero" }
         val id = if (record.id == 0L) (records.value.maxOfOrNull { it.id } ?: 0) + 1 else record.id
@@ -106,6 +108,13 @@ class FakePrefs : UserPrefsRepository {
     val defaults = mutableMapOf<RecordKind, RecordDefaults>()
     val calculator = MutableStateFlow(CalculatorPrefs())
     var lastPrompt: YearMonth? = null
+    val notificationPrefs = MutableStateFlow(com.moneyrecords.app.domain.repository.NotificationPrefs())
+    val sent = mutableSetOf<String>()
+    override fun observeNotifications() = notificationPrefs
+    override suspend fun notifications() = notificationPrefs.value
+    override suspend fun updateNotifications(change: (com.moneyrecords.app.domain.repository.NotificationPrefs) -> com.moneyrecords.app.domain.repository.NotificationPrefs) =
+        notificationPrefs.update(change)
+    override suspend fun markSent(key: String) = sent.add(key)
     override suspend fun lastBudgetPrompt() = lastPrompt
     override suspend fun setLastBudgetPrompt(month: YearMonth) { lastPrompt = month }
     override suspend fun recordDefaults(kind: RecordKind) = defaults[kind] ?: RecordDefaults()
@@ -132,6 +141,41 @@ class FakeBudgets : BudgetRepository {
     override suspend fun offsetCandidates(target: BudgetTarget, month: YearMonth) = candidates
     override suspend fun selectedOffsets(target: BudgetTarget, month: YearMonth) = offsets[target to month].orEmpty()
     override suspend fun setOffsets(target: BudgetTarget, month: YearMonth, recordIds: Set<Long>) { offsets[target to month] = recordIds }
+}
+
+class FakeRecurring(private val records: FakeRecords) : com.moneyrecords.app.domain.repository.RecurringRepository {
+    val rules = MutableStateFlow<List<com.moneyrecords.app.domain.model.RecurringRule>>(emptyList())
+    private fun details(r: com.moneyrecords.app.domain.model.RecurringRule) =
+        com.moneyrecords.app.domain.model.RecurringRuleDetails(r, "Account ${r.accountId}", null, "Category ${r.categoryId}", null)
+    override fun observeRules() = rules.map { list -> list.map(::details) }
+    override suspend fun get(id: Long) = rules.value.firstOrNull { it.id == id }
+    override suspend fun getDetails(id: Long) = get(id)?.let(::details)
+    override fun observeDue(today: java.time.LocalDate) = rules.map { list ->
+        list.flatMap { r -> com.moneyrecords.app.domain.recurring.Recurrence.dueDates(r, today).map { com.moneyrecords.app.domain.model.DueOccurrence(details(r), it) } }
+    }
+    override suspend fun save(rule: com.moneyrecords.app.domain.model.RecurringRule): Long {
+        val id = if (rule.id == 0L) (rules.value.maxOfOrNull { it.id } ?: 0) + 1 else rule.id
+        rules.update { list -> list.filterNot { it.id == id } + rule.copy(id = id) }
+        return id
+    }
+    override suspend fun confirm(ruleId: Long, override: Record?): Long {
+        val r = requireNotNull(get(ruleId))
+        val id = records.save((override ?: Record(kind = r.kind, amount = r.amount, accountId = r.accountId, categoryId = r.categoryId,
+            occurredAt = r.nextRunDate.atTime(9, 0).atZone(java.time.ZoneId.of("Asia/Kolkata")).toInstant())).copy(id = 0, recurringRuleId = r.id))
+        skip(ruleId)
+        return id
+    }
+    override suspend fun skip(ruleId: Long) {
+        val r = requireNotNull(get(ruleId))
+        save(r.copy(nextRunDate = com.moneyrecords.app.domain.recurring.Recurrence.next(r, r.nextRunDate)))
+    }
+    override suspend fun setActive(id: Long, active: Boolean) { get(id)?.let { save(it.copy(active = active)) } }
+    override suspend fun delete(id: Long) = rules.update { list -> list.filterNot { it.id == id } }
+}
+
+class FakeAlerts : com.moneyrecords.app.notify.BudgetAlerts {
+    val checked = mutableListOf<YearMonth>()
+    override suspend fun checkAfterRecord(month: YearMonth) { checked += month }
 }
 
 object TestData {

@@ -7,6 +7,8 @@ import com.moneyrecords.app.data.db.CategoryEntity
 import com.moneyrecords.app.data.db.RecordEntity
 import com.moneyrecords.app.data.db.RecordRow
 import com.moneyrecords.app.data.db.RecurringRuleEntity
+import com.moneyrecords.app.data.db.RecurringRuleRow
+import com.moneyrecords.app.domain.model.RecurringRuleDetails
 import com.moneyrecords.app.domain.model.Account
 import com.moneyrecords.app.domain.model.Budget
 import com.moneyrecords.app.domain.model.Category
@@ -72,6 +74,11 @@ fun RecurringRuleEntity.toDomain() = RecurringRule(
     categoryId = categoryId, note = note, frequency = frequency, interval = interval,
     startDate = LocalDate.ofEpochDay(startDate), endDate = endDate?.let(LocalDate::ofEpochDay),
     nextRunDate = LocalDate.ofEpochDay(nextRunDate), active = active,
+)
+
+fun RecurringRuleRow.toDomain() = RecurringRuleDetails(
+    rule = rule.toDomain(), accountName = accountName, toAccountName = toAccountName,
+    categoryName = categoryName, categoryIconKey = categoryIconKey,
 )
 
 fun RecurringRule.toEntity() = RecurringRuleEntity(

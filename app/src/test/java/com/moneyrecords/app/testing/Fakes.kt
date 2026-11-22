@@ -127,6 +127,11 @@ class FakeBudgets : BudgetRepository {
     override suspend fun save(budget: Budget): Long { require(budget.limit > 0); saved += budget; return saved.size.toLong() }
     override suspend fun stop(target: BudgetTarget, month: YearMonth) { stopped += target to month }
     override suspend fun spentIn(target: BudgetTarget, month: YearMonth) = spent(target, month)
+    val offsets = mutableMapOf<Pair<BudgetTarget, YearMonth>, Set<Long>>()
+    var candidates: List<RecordDetails> = emptyList()
+    override suspend fun offsetCandidates(target: BudgetTarget, month: YearMonth) = candidates
+    override suspend fun selectedOffsets(target: BudgetTarget, month: YearMonth) = offsets[target to month].orEmpty()
+    override suspend fun setOffsets(target: BudgetTarget, month: YearMonth, recordIds: Set<Long>) { offsets[target to month] = recordIds }
 }
 
 object TestData {

@@ -15,8 +15,9 @@ import com.moneyrecords.app.domain.model.CategoryKind
         RecurringRuleEntity::class,
         RecordEntity::class,
         BudgetEntity::class,
+        BudgetOffsetEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class MoneyRecordsDatabase : RoomDatabase() {
@@ -25,6 +26,7 @@ abstract class MoneyRecordsDatabase : RoomDatabase() {
     abstract fun recordDao(): RecordDao
     abstract fun recurringRuleDao(): RecurringRuleDao
     abstract fun budgetDao(): BudgetDao
+    abstract fun budgetOffsetDao(): BudgetOffsetDao
 
     companion object {
         const val NAME = "moneyrecords.db"
@@ -36,6 +38,42 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE budgets ADD COLUMN scope TEXT NOT NULL DEFAULT 'CATEGORY'")
         db.execSQL("UPDATE budgets SET scope = 'OVERALL' WHERE categoryId IS NULL")
+    }
+}
+
+/**
+ * v3: account budgets and hand-picked offsets.
+ * - budgets gains `accountId` (FK to accounts). SQLite can't add a FK column in place, so the table
+ *   is rebuilt (statements copied from schemas/3.json) and existing rows are copied across.
+ * - new table budget_offsets.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `budgets_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`scope` TEXT NOT NULL DEFAULT 'CATEGORY', `categoryId` INTEGER, `accountId` INTEGER, " +
+                "`yearMonth` INTEGER NOT NULL, `limitAmount` INTEGER NOT NULL, " +
+                "FOREIGN KEY(`categoryId`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT , " +
+                "FOREIGN KEY(`accountId`) REFERENCES `accounts`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        )
+        db.execSQL(
+            "INSERT INTO `budgets_new` (`id`, `scope`, `categoryId`, `accountId`, `yearMonth`, `limitAmount`) " +
+                "SELECT `id`, `scope`, `categoryId`, NULL, `yearMonth`, `limitAmount` FROM `budgets`",
+        )
+        db.execSQL("DROP TABLE `budgets`")
+        db.execSQL("ALTER TABLE `budgets_new` RENAME TO `budgets`")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_budgets_categoryId_yearMonth` ON `budgets` (`categoryId`, `yearMonth`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_budgets_accountId` ON `budgets` (`accountId`)")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `budget_offsets` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`scope` TEXT NOT NULL, `categoryId` INTEGER, `accountId` INTEGER, `recordId` INTEGER NOT NULL, " +
+                "FOREIGN KEY(`recordId`) REFERENCES `records`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_budget_offsets_recordId` ON `budget_offsets` (`recordId`)")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_budget_offsets_scope_categoryId_accountId` ON `budget_offsets` (`scope`, `categoryId`, `accountId`)",
+        )
     }
 }
 

@@ -29,6 +29,8 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.PieChart
+import com.moneyrecords.app.ui.icons.AppIcons
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -150,6 +152,16 @@ fun BudgetsScreen(
             }
         }
 
+        if (overview != null && (overview.accounts.isNotEmpty() || overview.otherAccounts != null)) {
+            item { Spacer(Modifier.height(Space.lg)); SectionLabel("By account"); Spacer(Modifier.height(Space.sm)) }
+            items(overview.accounts, key = { "a${it.budget.accountId}" }) { p ->
+                BudgetRow(p, perDay = state.perDay(p), onClick = { editor = EditorRequest(p.budget.target, p) })
+            }
+            overview.otherAccounts?.let { other ->
+                item(key = "otherAccounts") { BudgetRow(other, perDay = state.perDay(other), onClick = { editor = EditorRequest(other.budget.target, other) }) }
+            }
+        }
+
         if (overview != null && overview.suggestions.isNotEmpty()) {
             item { Spacer(Modifier.height(Space.xl)); SectionLabel("Spending without a budget") }
             items(overview.suggestions, key = { "s${it.categoryId}" }) { s ->
@@ -181,6 +193,19 @@ fun BudgetProgress.label(): String = when (budget.scope) {
     BudgetScope.OVERALL -> "Overall"
     BudgetScope.REST -> "Everything else"
     BudgetScope.CATEGORY -> categoryName ?: "Category"
+    BudgetScope.ACCOUNT -> accountName ?: "Account"
+    BudgetScope.OTHER_ACCOUNTS -> "Other accounts"
+}
+
+/** Round-badge content for a budget line. */
+@Composable
+fun BudgetIcon(p: BudgetProgress, size: androidx.compose.ui.unit.Dp = 20.dp) {
+    when (p.budget.scope) {
+        BudgetScope.CATEGORY -> CategoryIcon(p.categoryIconKey, size = size)
+        BudgetScope.ACCOUNT -> Icon(AppIcons.forKey(p.accountIconKey), contentDescription = null, modifier = Modifier.size(size))
+        BudgetScope.OVERALL -> Icon(Icons.Outlined.PieChart, contentDescription = null, modifier = Modifier.size(size))
+        BudgetScope.REST, BudgetScope.OTHER_ACCOUNTS -> Icon(Icons.Outlined.MoreHoriz, contentDescription = null, modifier = Modifier.size(size))
+    }
 }
 
 @Composable
@@ -240,8 +265,7 @@ private fun BudgetRow(p: BudgetProgress, perDay: Long?, onClick: () -> Unit) {
                 Modifier.size(40.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                if (p.budget.scope == BudgetScope.REST) Icon(Icons.Outlined.MoreHoriz, contentDescription = null)
-                else CategoryIcon(p.categoryIconKey, size = 20.dp)
+                BudgetIcon(p)
             }
             Spacer(Modifier.width(Space.md))
             Column(Modifier.weight(1f)) {
@@ -250,9 +274,11 @@ private fun BudgetRow(p: BudgetProgress, perDay: Long?, onClick: () -> Unit) {
                     StatusTag(p)
                 }
                 val sub = buildList {
-                    if (p.budget.scope == BudgetScope.REST) add("${p.coveredCount} categories")
+                    if (p.budget.scope == BudgetScope.REST) add(countLabel(p.coveredCount, "category", "categories"))
+                    if (p.budget.scope == BudgetScope.OTHER_ACCOUNTS) add(countLabel(p.coveredCount, "account", "accounts"))
                     add(if (p.isOver) "${Money.format(-p.remaining)} over" else "${Money.format(p.remaining)} left")
                     if (perDay != null && !p.isOver) add("${Money.format(perDay)}/day")
+                    if (p.offset > 0) add("${Money.format(p.offset)} counted back")
                 }
                 Text(sub.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -266,3 +292,6 @@ private fun BudgetRow(p: BudgetProgress, perDay: Long?, onClick: () -> Unit) {
         DotProgress(p.fraction, dotSize = 6.dp)
     }
 }
+
+/** "1 category", "3 categories"; "1 account", "2 accounts". */
+fun countLabel(n: Int, one: String, many: String) = "$n ${if (n == 1) one else many}"

@@ -48,6 +48,7 @@ interface AccountDao {
         """
         SELECT EXISTS(SELECT 1 FROM records WHERE accountId = :id OR toAccountId = :id)
             OR EXISTS(SELECT 1 FROM recurring_rules WHERE accountId = :id OR toAccountId = :id)
+            OR EXISTS(SELECT 1 FROM budgets WHERE accountId = :id)
         """,
     )
     suspend fun isUsed(id: Long): Boolean
@@ -153,6 +154,36 @@ interface RecordDao {
     )
     fun observeExpenseByCategory(from: Long, to: Long): Flow<List<CategorySpend>>
 
+    /** Money leaving each account in a range: expenses paid from it + transfers out of it. */
+    @Query(
+        """
+        SELECT accountId, SUM(amount) AS total FROM records
+        WHERE kind IN ('EXPENSE', 'TRANSFER') AND occurredAt >= :from AND occurredAt < :to
+        GROUP BY accountId
+        """,
+    )
+    fun observeOutflowByAccount(from: Long, to: Long): Flow<List<AccountSpend>>
+
+    /**
+     * Records that may be counted back against a budget in a range: income (into [accountId] when
+     * given) and, for an account, transfers into it. Newest first, with display names.
+     */
+    @Query(
+        """
+        SELECT r.*, a.name AS accountName, ta.name AS toAccountName,
+               c.name AS categoryName, c.iconKey AS categoryIconKey
+        FROM records r
+        JOIN accounts a ON a.id = r.accountId
+        LEFT JOIN accounts ta ON ta.id = r.toAccountId
+        LEFT JOIN categories c ON c.id = r.categoryId
+        WHERE r.occurredAt >= :from AND r.occurredAt < :to
+          AND ((r.kind = 'INCOME' AND (:accountId IS NULL OR r.accountId = :accountId))
+               OR (:accountId IS NOT NULL AND r.kind = 'TRANSFER' AND r.toAccountId = :accountId))
+        ORDER BY r.occurredAt DESC, r.id DESC
+        """,
+    )
+    suspend fun offsetCandidates(accountId: Long?, from: Long, to: Long): List<RecordRow>
+
     @Query("SELECT * FROM records WHERE id = :id")
     suspend fun get(id: Long): RecordEntity?
 
@@ -192,28 +223,68 @@ interface BudgetDao {
         SELECT b.* FROM budgets b
         WHERE b.yearMonth = (
             SELECT MAX(b2.yearMonth) FROM budgets b2
-            WHERE b2.scope = b.scope AND b2.categoryId IS b.categoryId AND b2.yearMonth <= :yearMonth
+            WHERE b2.scope = b.scope AND b2.categoryId IS b.categoryId AND b2.accountId IS b.accountId
+              AND b2.yearMonth <= :yearMonth
         )
         AND b.limitAmount > 0
         """,
     )
     fun observeEffective(yearMonth: Int): Flow<List<BudgetEntity>>
 
-    @Query("SELECT * FROM budgets WHERE scope = :scope AND categoryId IS :categoryId AND yearMonth = :yearMonth LIMIT 1")
-    suspend fun find(scope: BudgetScope, categoryId: Long?, yearMonth: Int): BudgetEntity?
+    @Query(
+        """
+        SELECT * FROM budgets WHERE scope = :scope AND categoryId IS :categoryId AND accountId IS :accountId
+          AND yearMonth = :yearMonth LIMIT 1
+        """,
+    )
+    suspend fun find(scope: BudgetScope, categoryId: Long?, accountId: Long?, yearMonth: Int): BudgetEntity?
 
     /** The most recent row for this budget before [yearMonth], if any. */
     @Query(
         """
-        SELECT * FROM budgets WHERE scope = :scope AND categoryId IS :categoryId AND yearMonth < :yearMonth
+        SELECT * FROM budgets WHERE scope = :scope AND categoryId IS :categoryId AND accountId IS :accountId
+          AND yearMonth < :yearMonth
         ORDER BY yearMonth DESC LIMIT 1
         """,
     )
-    suspend fun latestBefore(scope: BudgetScope, categoryId: Long?, yearMonth: Int): BudgetEntity?
+    suspend fun latestBefore(scope: BudgetScope, categoryId: Long?, accountId: Long?, yearMonth: Int): BudgetEntity?
 
     @Insert suspend fun insert(budget: BudgetEntity): Long
     @Update suspend fun update(budget: BudgetEntity)
 
     @Query("DELETE FROM budgets WHERE id = :id")
     suspend fun delete(id: Long)
+}
+
+@Dao
+interface BudgetOffsetDao {
+    /** Counted-back amounts for every budget line, for records dated in [from, to). */
+    @Query(
+        """
+        SELECT o.scope, o.categoryId, o.accountId, r.amount FROM budget_offsets o
+        JOIN records r ON r.id = o.recordId
+        WHERE r.occurredAt >= :from AND r.occurredAt < :to
+        """,
+    )
+    fun observeInRange(from: Long, to: Long): Flow<List<OffsetRow>>
+
+    @Query(
+        """
+        SELECT o.recordId FROM budget_offsets o JOIN records r ON r.id = o.recordId
+        WHERE o.scope = :scope AND o.categoryId IS :categoryId AND o.accountId IS :accountId
+          AND r.occurredAt >= :from AND r.occurredAt < :to
+        """,
+    )
+    suspend fun selectedIds(scope: BudgetScope, categoryId: Long?, accountId: Long?, from: Long, to: Long): List<Long>
+
+    @Query(
+        """
+        DELETE FROM budget_offsets
+        WHERE scope = :scope AND categoryId IS :categoryId AND accountId IS :accountId
+          AND recordId IN (SELECT id FROM records WHERE occurredAt >= :from AND occurredAt < :to)
+        """,
+    )
+    suspend fun clear(scope: BudgetScope, categoryId: Long?, accountId: Long?, from: Long, to: Long)
+
+    @Insert suspend fun insertAll(offsets: List<BudgetOffsetEntity>)
 }

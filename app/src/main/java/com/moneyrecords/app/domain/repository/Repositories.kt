@@ -83,4 +83,14 @@ interface BudgetRepository {
     suspend fun stop(target: BudgetTarget, month: YearMonth)
     /** What [target] would have counted as spent in [month] (e.g. "last month you spent ₹X"). */
     suspend fun spentIn(target: BudgetTarget, month: YearMonth): Long
+
+    /**
+     * Records that can be counted back against [target] in [month]: income (into the account, for
+     * account budgets) and, for account budgets, transfers into the account.
+     */
+    suspend fun offsetCandidates(target: BudgetTarget, month: YearMonth): List<RecordDetails>
+    /** Ids of the records currently counted back against [target] in [month]. */
+    suspend fun selectedOffsets(target: BudgetTarget, month: YearMonth): Set<Long>
+    /** Replaces [target]'s counted-back records for [month] with [recordIds]. */
+    suspend fun setOffsets(target: BudgetTarget, month: YearMonth, recordIds: Set<Long>)
 }

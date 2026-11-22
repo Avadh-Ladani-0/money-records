@@ -82,9 +82,9 @@ fun RecurringRule.toEntity() = RecurringRuleEntity(
 )
 
 fun BudgetEntity.toDomain() = Budget(
-    id = id, categoryId = categoryId, month = MonthRange.fromKey(yearMonth), limit = limitAmount, scope = scope,
+    id = id, categoryId = categoryId, month = MonthRange.fromKey(yearMonth), limit = limitAmount, accountId = accountId, scope = scope,
 )
 
 fun Budget.toEntity() = BudgetEntity(
-    id = id, scope = scope, categoryId = categoryId, yearMonth = MonthRange.key(month), limitAmount = limit,
+    id = id, scope = scope, categoryId = categoryId, accountId = accountId, yearMonth = MonthRange.key(month), limitAmount = limit,
 )

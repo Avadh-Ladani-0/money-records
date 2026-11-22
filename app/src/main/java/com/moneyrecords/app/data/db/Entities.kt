@@ -99,18 +99,40 @@ data class RecordEntity(
     tableName = "budgets",
     foreignKeys = [
         ForeignKey(entity = CategoryEntity::class, parentColumns = ["id"], childColumns = ["categoryId"], onDelete = ForeignKey.RESTRICT),
+        ForeignKey(entity = AccountEntity::class, parentColumns = ["id"], childColumns = ["accountId"], onDelete = ForeignKey.RESTRICT),
     ],
-    indices = [Index(value = ["categoryId", "yearMonth"], unique = true)],
+    indices = [Index(value = ["categoryId", "yearMonth"], unique = true), Index("accountId")],
 )
 data class BudgetEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     /** OVERALL | CATEGORY | REST (added in DB version 2). */
     @ColumnInfo(defaultValue = "CATEGORY") val scope: BudgetScope = BudgetScope.CATEGORY,
     val categoryId: Long?,
+    /** Only for ACCOUNT budgets (added in DB version 3). */
+    val accountId: Long? = null,
     /** e.g. 202611. */
     val yearMonth: Int,
     /** Paise; 0 = stop marker ("no budget from this month on"). ("limit" is an SQL keyword.) */
     val limitAmount: Long,
+)
+
+/**
+ * A record hand-picked to count back against a budget line (scope + category/account), in the month
+ * of the record's date. Deleting the record removes the selection (DB version 3).
+ */
+@Entity(
+    tableName = "budget_offsets",
+    foreignKeys = [
+        ForeignKey(entity = RecordEntity::class, parentColumns = ["id"], childColumns = ["recordId"], onDelete = ForeignKey.CASCADE),
+    ],
+    indices = [Index("recordId"), Index(value = ["scope", "categoryId", "accountId"])],
+)
+data class BudgetOffsetEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val scope: BudgetScope,
+    val categoryId: Long?,
+    val accountId: Long?,
+    val recordId: Long,
 )
 
 // --- Query result shapes ---
@@ -131,3 +153,8 @@ data class RecordRow(
 data class TotalsRow(val income: Long, val expense: Long)
 
 data class CategorySpend(val categoryId: Long, val total: Long)
+
+data class AccountSpend(val accountId: Long, val total: Long)
+
+/** A counted-back record's amount, keyed by the budget line it belongs to. */
+data class OffsetRow(val scope: BudgetScope, val categoryId: Long?, val accountId: Long?, val amount: Long)

@@ -108,15 +108,26 @@ enum class BudgetScope {
     CATEGORY,
     /** "Everything else": every expense category that has no budget of its own. */
     REST,
+    /** One account: expenses paid from it + transfers out of it. */
+    ACCOUNT,
+    /** "Other accounts": every account that has no budget of its own. */
+    OTHER_ACCOUNTS,
 }
 
 /** Identifies a budget line independent of month. */
-data class BudgetTarget(val scope: BudgetScope, val categoryId: Long? = null) {
-    init { require((scope == BudgetScope.CATEGORY) == (categoryId != null)) { "Only category budgets have a category" } }
+data class BudgetTarget(val scope: BudgetScope, val categoryId: Long? = null, val accountId: Long? = null) {
+    init {
+        require((scope == BudgetScope.CATEGORY) == (categoryId != null)) { "Only category budgets have a category" }
+        require((scope == BudgetScope.ACCOUNT) == (accountId != null)) { "Only account budgets have an account" }
+    }
+    val isAccountBased: Boolean get() = scope == BudgetScope.ACCOUNT || scope == BudgetScope.OTHER_ACCOUNTS
+
     companion object {
         val Overall = BudgetTarget(BudgetScope.OVERALL)
         val Rest = BudgetTarget(BudgetScope.REST)
-        fun category(id: Long) = BudgetTarget(BudgetScope.CATEGORY, id)
+        val OtherAccounts = BudgetTarget(BudgetScope.OTHER_ACCOUNTS)
+        fun category(id: Long) = BudgetTarget(BudgetScope.CATEGORY, categoryId = id)
+        fun account(id: Long) = BudgetTarget(BudgetScope.ACCOUNT, accountId = id)
     }
 }
 
@@ -130,18 +141,29 @@ data class Budget(
     val month: YearMonth,
     /** Paise. */
     val limit: Long,
-    val scope: BudgetScope = if (categoryId == null) BudgetScope.OVERALL else BudgetScope.CATEGORY,
+    /** Only for ACCOUNT budgets. */
+    val accountId: Long? = null,
+    val scope: BudgetScope = when {
+        accountId != null -> BudgetScope.ACCOUNT
+        categoryId != null -> BudgetScope.CATEGORY
+        else -> BudgetScope.OVERALL
+    },
 ) {
-    val target: BudgetTarget get() = BudgetTarget(scope, categoryId)
+    val target: BudgetTarget get() = BudgetTarget(scope, categoryId, accountId)
 }
 
 data class BudgetProgress(
     val budget: Budget,
     val categoryName: String?,
     val categoryIconKey: String?,
+    /** Net spent: the gross amount minus [offset] (never below zero). */
     val spent: Long,
-    /** For REST: how many main expense categories it currently covers. */
+    /** REST: main expense categories covered; OTHER_ACCOUNTS: accounts covered. */
     val coveredCount: Int = 0,
+    val accountName: String? = null,
+    val accountIconKey: String? = null,
+    /** Total of hand-picked records counted back this month. */
+    val offset: Long = 0,
 ) {
     val fraction: Float get() = if (budget.limit <= 0) 0f else spent.toFloat() / budget.limit
     val remaining: Long get() = budget.limit - spent
@@ -161,8 +183,12 @@ data class BudgetOverview(
     val rest: BudgetProgress?,
     /** Empty while a REST budget exists (those categories are already covered). */
     val suggestions: List<BudgetSuggestion>,
+    /** Account budgets, most used first. */
+    val accounts: List<BudgetProgress> = emptyList(),
+    val otherAccounts: BudgetProgress? = null,
 ) {
-    /** Overall first, then categories, then "Everything else". */
-    val all: List<BudgetProgress> get() = listOfNotNull(overall) + categories + listOfNotNull(rest)
+    /** Overall, categories, "Everything else", accounts, then "Other accounts". */
+    val all: List<BudgetProgress>
+        get() = listOfNotNull(overall) + categories + listOfNotNull(rest) + accounts + listOfNotNull(otherAccounts)
     val isEmpty: Boolean get() = all.isEmpty()
 }

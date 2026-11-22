@@ -5,6 +5,7 @@ import com.moneyrecords.app.domain.model.BudgetOverview
 import com.moneyrecords.app.domain.model.BudgetProgress
 import com.moneyrecords.app.domain.model.BudgetScope
 import com.moneyrecords.app.domain.model.BudgetTarget
+import com.moneyrecords.app.testing.FakeAccounts
 import com.moneyrecords.app.testing.FakeBudgets
 import com.moneyrecords.app.testing.FakeCategories
 import com.moneyrecords.app.testing.TestData
@@ -68,7 +69,7 @@ class BudgetsViewModelTest {
     @Test fun `state follows the viewed month and saves apply from it`() = runTest {
         val overall = progress(20_000_00, 5_000_00)
         budgets.overviews.value = mapOf(nov to BudgetOverview(nov, overall, emptyList(), null, emptyList()))
-        val vm = BudgetsViewModel(budgets, FakeCategories(TestData.trees), clock)
+        val vm = BudgetsViewModel(budgets, FakeCategories(TestData.trees), FakeAccounts(listOf(TestData.cash, TestData.bank)), clock)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.state.collect {} }
 
         assertEquals(nov, vm.state.value.month)
@@ -92,5 +93,14 @@ class BudgetsViewModelTest {
 
         vm.stop(BudgetTarget.category(TestData.food.id))
         assertEquals(BudgetTarget.category(TestData.food.id) to YearMonth.of(2026, 12), budgets.stopped.single())
+
+        // Account budgets save with their account, and editing stores the counted-back records.
+        assertEquals(listOf("Cash", "Bank"), vm.state.value.accounts.map { it.name })
+        vm.save(BudgetTarget.account(TestData.bank.id), 20_000_00, offsets = setOf(7L, 9L)) { error = it }
+        assertNull(error)
+        val accountBudget = budgets.saved.last()
+        assertEquals(BudgetScope.ACCOUNT, accountBudget.scope)
+        assertEquals(TestData.bank.id, accountBudget.accountId)
+        assertEquals(setOf(7L, 9L), budgets.offsets[BudgetTarget.account(TestData.bank.id) to YearMonth.of(2026, 12)])
     }
 }

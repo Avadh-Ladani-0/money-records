@@ -42,6 +42,9 @@ import com.moneyrecords.app.ui.feature.categories.CategoryEditorScreen
 import com.moneyrecords.app.ui.feature.home.HomeScreen
 import com.moneyrecords.app.ui.components.QuickCalculatorOverlay
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -65,7 +68,10 @@ private fun NavDestination?.isOn(routeClass: KClass<*>) =
     this?.hierarchy?.any { it.hasRoute(routeClass) } == true
 
 @Composable
-fun MoneyRecordsRoot(appViewModel: AppViewModel = hiltViewModel()) {
+fun MoneyRecordsRoot(
+    openBudgetsRequests: Flow<Unit> = emptyFlow(),
+    appViewModel: AppViewModel = hiltViewModel(),
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val destination = backStackEntry?.destination
@@ -74,6 +80,15 @@ fun MoneyRecordsRoot(appViewModel: AppViewModel = hiltViewModel()) {
     val scope = rememberCoroutineScope()
 
     val calculator by appViewModel.calculator.collectAsStateWithLifecycle()
+    // Notification "✗ Edit" → Budgets tab (for the current month).
+    LaunchedEffect(openBudgetsRequests) {
+        openBudgetsRequests.collect {
+            navController.navigate(BudgetsRoute) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+            }
+        }
+    }
     // Bumped on every scroll anywhere in the app; the calculator tab hides while it keeps changing.
     val scrollSignal = remember { mutableIntStateOf(0) }
     val scrollWatcher = remember {

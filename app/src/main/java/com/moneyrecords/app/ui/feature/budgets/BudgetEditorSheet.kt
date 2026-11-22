@@ -58,6 +58,8 @@ fun BudgetEditorSheet(
     existing: BudgetProgress?,
     viewModel: BudgetsViewModel,
     onDismiss: () -> Unit,
+    /** Called after a successful save (e.g. to ask for notification permission). */
+    onSaved: () -> Unit = {},
 ) {
     val monthName = remember(state.month) { state.month.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())) }
     var target by remember { mutableStateOf(existing?.budget?.target ?: initialTarget) }
@@ -167,7 +169,7 @@ fun BudgetEditorSheet(
                 enabled = target != null && Money.parse(amount) != null,
                 onClick = {
                     val t = target ?: return@PillButton
-                    viewModel.save(t, Money.parse(amount)) { e -> if (e == null) onDismiss() else error = e }
+                    viewModel.save(t, Money.parse(amount)) { e -> if (e == null) { onSaved(); onDismiss() } else error = e }
                 },
                 modifier = Modifier.fillMaxWidth(),
             )

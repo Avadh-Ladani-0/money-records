@@ -25,7 +25,8 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
   (all categories without their own budget). Set once, they carry forward to later months; edits apply
   from that month on, and a budget can be stopped without touching past months. Dot-matrix progress,
   "80% used" / "Over" warnings, "₹X a day left", suggestions for unbudgeted spending, and an overall
-  budget bar on Home.
+  budget bar on Home. On the 1st of each month a notification asks whether to keep last month's
+  budgets — ✓ Keep, or ✗ Edit to open the Budgets tab.
 - **Floating calculator**: draggable bubble on every screen with a Copy button; can be turned off in Settings.
 
 ## Roadmap

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: lets adb trigger notifications for manual testing. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name=".debug.DebugTriggerReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.moneyrecords.app.debug.SHOW_BUDGET_PROMPT" />
+                <action android:name="com.moneyrecords.app.debug.RUN_MONTH_START_CHECK" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

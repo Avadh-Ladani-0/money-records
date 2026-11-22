@@ -6,12 +6,15 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.moneyrecords.app.domain.model.RecordKind
 import com.moneyrecords.app.domain.repository.CalculatorPrefs
 import com.moneyrecords.app.domain.repository.RecordDefaults
 import com.moneyrecords.app.domain.repository.UserPrefsRepository
+import com.moneyrecords.app.domain.time.MonthRange
+import java.time.YearMonth
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -30,6 +33,7 @@ class DataStoreUserPrefs @Inject constructor(
     private fun accountKey(kind: RecordKind) = longPreferencesKey("last_account_${kind.name}")
     private fun toAccountKey(kind: RecordKind) = longPreferencesKey("last_to_account_${kind.name}")
     private fun categoryKey(kind: RecordKind) = longPreferencesKey("last_category_${kind.name}")
+    private val lastBudgetPromptKey = intPreferencesKey("last_budget_prompt")
     private val calcEnabled = booleanPreferencesKey("calc_enabled")
     private val calcX = floatPreferencesKey("calc_x")
     private val calcY = floatPreferencesKey("calc_y")
@@ -52,6 +56,13 @@ class DataStoreUserPrefs @Inject constructor(
             put(toAccountKey(kind), defaults.toAccountId)
             put(categoryKey(kind), defaults.categoryId)
         }
+    }
+
+    override suspend fun lastBudgetPrompt(): YearMonth? =
+        store.data.first()[lastBudgetPromptKey]?.let(MonthRange::fromKey)
+
+    override suspend fun setLastBudgetPrompt(month: YearMonth) {
+        store.edit { it[lastBudgetPromptKey] = MonthRange.key(month) }
     }
 
     override fun observeCalculator(): Flow<CalculatorPrefs> = store.data.map { prefs ->

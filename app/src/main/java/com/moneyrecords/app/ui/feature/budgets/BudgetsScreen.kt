@@ -1,5 +1,12 @@
 package com.moneyrecords.app.ui.feature.budgets
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -74,6 +81,14 @@ fun BudgetsScreen(
     var editor by remember { mutableStateOf<EditorRequest?>(null) }
     val monthFormat = remember { DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()) }
     val overview = state.overview
+    // Ask for notification permission (month-start budget check) the first time a budget is saved.
+    val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val askForNotifications = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = Space.screen, vertical = Space.lg)) {
         item {
@@ -157,6 +172,7 @@ fun BudgetsScreen(
             existing = request.existing,
             viewModel = viewModel,
             onDismiss = { editor = null },
+            onSaved = askForNotifications,
         )
     }
 }

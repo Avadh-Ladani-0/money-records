@@ -2,6 +2,7 @@ package com.moneyrecords.app.domain.repository
 
 import com.moneyrecords.app.domain.model.RecordKind
 import kotlinx.coroutines.flow.Flow
+import java.time.YearMonth
 
 /** Last choices used when adding a record, so the next one is pre-filled. */
 data class RecordDefaults(
@@ -20,6 +21,10 @@ data class CalculatorPrefs(
 interface UserPrefsRepository {
     suspend fun recordDefaults(kind: RecordKind): RecordDefaults
     suspend fun rememberRecordDefaults(kind: RecordKind, defaults: RecordDefaults)
+
+    /** The month we last asked "keep last month's budgets?" for (null = never). */
+    suspend fun lastBudgetPrompt(): YearMonth?
+    suspend fun setLastBudgetPrompt(month: YearMonth)
 
     fun observeCalculator(): Flow<CalculatorPrefs>
     suspend fun setCalculatorEnabled(enabled: Boolean)

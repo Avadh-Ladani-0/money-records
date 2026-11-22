@@ -105,6 +105,9 @@ class FakeRecords(initial: List<Record> = emptyList()) : RecordRepository {
 class FakePrefs : UserPrefsRepository {
     val defaults = mutableMapOf<RecordKind, RecordDefaults>()
     val calculator = MutableStateFlow(CalculatorPrefs())
+    var lastPrompt: YearMonth? = null
+    override suspend fun lastBudgetPrompt() = lastPrompt
+    override suspend fun setLastBudgetPrompt(month: YearMonth) { lastPrompt = month }
     override suspend fun recordDefaults(kind: RecordKind) = defaults[kind] ?: RecordDefaults()
     override suspend fun rememberRecordDefaults(kind: RecordKind, defaults: RecordDefaults) { this.defaults[kind] = defaults }
     override fun observeCalculator(): Flow<CalculatorPrefs> = calculator

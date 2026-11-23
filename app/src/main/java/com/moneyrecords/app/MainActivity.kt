@@ -67,6 +67,17 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    @Inject lateinit var detectedNotifier: com.moneyrecords.app.notify.DetectedNotifier
+
+    /** Each time the app comes up: clear prompts for payments already recorded or dismissed. */
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch {
+            runCatching { detectedNotifier.refreshSummary(alert = false) }
+                .onFailure { android.util.Log.w("MoneyRecords", "refreshSummary failed", it) }
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handle(intent)

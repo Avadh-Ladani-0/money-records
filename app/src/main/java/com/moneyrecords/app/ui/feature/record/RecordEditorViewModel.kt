@@ -294,9 +294,24 @@ class RecordEditorViewModel @Inject constructor(
         }
     }
 
+    /** Set once the caught payment is recorded or dismissed — otherwise leaving brings its prompt back. */
+    private var detectedHandled = false
+
+    init {
+        if (detectedId > 0) detectedNotifier.editing(detectedId, true)
+    }
+
+    override fun onCleared() {
+        if (detectedId > 0) detectedNotifier.editing(detectedId, false)
+        // Closed without recording (and not "No payment made"): keep reminding until it's recorded.
+        if (detectedId > 0 && !detectedHandled) detectedNotifier.remindIfOpen(detectedId)
+        super.onCleared()
+    }
+
     /** "Later": keep it in To record (the ongoing reminder stays). */
     fun detectedLater() {
         if (detectedId == 0L) return
+        detectedHandled = true // the ongoing "payments to record" keeps it in view
         viewModelScope.launch {
             detection.setStatus(detectedId, com.moneyrecords.app.domain.detect.DetectStatus.LATER)
             detectedNotifier.refreshSummary()
@@ -308,6 +323,7 @@ class RecordEditorViewModel @Inject constructor(
     fun detectedIgnore() {
         if (detectedId == 0L) return
         viewModelScope.launch {
+            detectedHandled = true
             detection.setStatus(detectedId, com.moneyrecords.app.domain.detect.DetectStatus.IGNORED)
             detectedNotifier.cancel(detectedId)
             detectedNotifier.refreshSummary()
@@ -485,6 +501,7 @@ class RecordEditorViewModel @Inject constructor(
                 alerts.checkAfterRecord(YearMonth.from(s.date))
                 // A caught payment is now recorded: it leaves To record and its prompt goes.
                 if (detectedId > 0) {
+                    detectedHandled = true
                     detection.setStatus(detectedId, com.moneyrecords.app.domain.detect.DetectStatus.ADDED, savedId)
                     detectedNotifier.cancel(detectedId)
                     detectedNotifier.refreshSummary()

@@ -51,6 +51,26 @@ object SmsSources {
      * One key per bank for all its senders: "JD-SBIUPI-S", "JK-ATMSBI-S" → "sms:SBI"; "JX-KCBANK-S" →
      * "sms:KCB". Unknown senders keep their own name ("sms:RZRPAY").
      */
+    /** Words an account's name may use for each bank ("SBI", "State Bank", "Kalupur"…). */
+    private val names = mapOf(
+        "SBI" to listOf("SBI", "STATE BANK"),
+        "BOB" to listOf("BOB", "BARODA"),
+        "KCB" to listOf("KALUPUR", "KCB", "KCCB"),
+        "HDFC" to listOf("HDFC"), "ICICI" to listOf("ICICI"), "AXIS" to listOf("AXIS"),
+        "KOTAK" to listOf("KOTAK"), "PNB" to listOf("PNB", "PUNJAB NATIONAL"), "IDFC" to listOf("IDFC"),
+        "YES" to listOf("YES BANK"), "CANARA" to listOf("CANARA"), "UNION" to listOf("UNION BANK"),
+    )
+
+    /** The bank code in a key ("sms:SBI" → "SBI"), or null for non-bank senders. */
+    fun bankOf(key: String): String? = key.removePrefix("sms:").takeIf { it in names }
+
+    /** Whether an account named [accountName] looks like it's at the bank of [key]. */
+    fun nameMatches(key: String, accountName: String): Boolean {
+        val words = names[bankOf(key) ?: return false] ?: return false
+        val n = accountName.uppercase()
+        return words.any { it in n }
+    }
+
     fun bankKey(address: String): String {
         val core = address.uppercase().removePrefix("+").split('-').let { parts ->
             if (parts.size >= 2 && parts[0].length == 2) parts[1] else parts.firstOrNull().orEmpty()

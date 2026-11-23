@@ -25,6 +25,7 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class PayLaunchActivity : ComponentActivity() {
     @Inject lateinit var pipeline: DetectionPipeline
+    @Inject lateinit var watcher: com.moneyrecords.app.detect.PayWatcher
     private var detectedId = 0L
     private var launched = false
 
@@ -52,6 +53,8 @@ class PayLaunchActivity : ComponentActivity() {
             if (target == null) { finish(); return@launch }
             launched = true
             runCatching { startActivity(target) }.onFailure { finish() }
+            // Left by swiping up instead of Back: ask straight away.
+            watcher.watch(pkg, detectedId)
         }
     }
 

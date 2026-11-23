@@ -95,6 +95,12 @@ private fun hasSms(context: Context) =
     ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED &&
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
 
+private fun usageAccess(context: Context): Boolean {
+    val ops = context.getSystemService(android.app.AppOpsManager::class.java)
+    return ops.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName) ==
+        android.app.AppOpsManager.MODE_ALLOWED
+}
+
 private fun hasListener(context: Context) = context.packageName in NotificationManagerCompat.getEnabledListenerPackages(context)
 
 /**
@@ -151,6 +157,20 @@ fun AutoDetectScreen(onBack: () -> Unit, onMessage: (String) -> Unit, viewModel:
                     }
                     viewModel.setNotifications(on)
                 },
+            )
+        }
+        item {
+            val watcher = remember { usageAccess(context) }
+            var usageOn by remember { mutableStateOf(watcher) }
+            LifecycleResumeEffect(Unit) { usageOn = usageAccess(context); onPauseOrDispose { } }
+            ListRow(
+                title = "Usage access",
+                subtitle = if (usageOn) "On — after a Scan & pay tap, you're asked as soon as you leave the payment app"
+                else "Off — turn on to be asked as soon as you swipe away from the payment app after a Scan & pay tap",
+                subtitleLines = 2,
+                icon = Icons.Outlined.NotificationsActive,
+                onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
+                trailing = { Text(if (usageOn) "On" else "Turn on", style = MaterialTheme.typography.labelLarge) },
             )
         }
         item {

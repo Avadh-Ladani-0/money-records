@@ -6,6 +6,10 @@
     <!-- Auto-detect (off until the user turns it on): bank transaction SMS. -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
+    <!-- Scan & pay: notice leaving the payment app (only for a few minutes after a tap). -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
     <!-- Pay widgets: find installed UPI apps and open them. -->
     <queries>
         <intent>

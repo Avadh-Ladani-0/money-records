@@ -233,4 +233,6 @@ class FakeDetection : com.moneyrecords.app.domain.detect.DetectionRepository, co
     override suspend fun refresh(id: Long) = get(id)
     override fun cancel(id: Long) {}
     override suspend fun refreshSummary(alert: Boolean) {}
+    override fun remindIfOpen(id: Long) {}
+    override fun editing(id: Long, open: Boolean) {}
 }

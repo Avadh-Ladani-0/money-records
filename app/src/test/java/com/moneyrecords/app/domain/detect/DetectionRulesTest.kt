@@ -66,4 +66,11 @@ class DetectionRulesTest {
         // An app without Lite: always a bank.
         assertEquals(2L, DetectionRules.accountForApp("com.phonepe.app", Direction.OUT, 50_00, 3, gpay, setOf(2), null))
     }
+
+    @Test fun `a bank's messages match the account named after it`() {
+        val m = com.moneyrecords.app.detect.SmsSources::nameMatches
+        assertTrue(m("sms:SBI", "SBI")); assertTrue(m("sms:SBI", "State Bank savings"))
+        assertTrue(m("sms:KCB", "Kalupur")); assertTrue(m("sms:BOB", "BOB"))
+        assertFalse(m("sms:SBI", "BOB")); assertFalse(m("sms:RZRPAY", "SBI"))
+    }
 }

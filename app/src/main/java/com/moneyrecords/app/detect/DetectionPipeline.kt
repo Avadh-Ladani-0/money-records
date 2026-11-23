@@ -52,9 +52,21 @@ class DetectionPipeline @Inject constructor(
         val digits = accountList.mapNotNull { a -> a.digits?.let { a.id to it } }.toMap()
         val key = if (source == DetectSource.SMS) SmsSources.bankKey(origin) else origin
         var accountId = DetectionRules.resolveAccount(parsed.accountDigits, key, digits, prefs.smsBanks)
-        // Learn which bank an SMS sender belongs to, so its messages without digits (top-ups) still match.
-        if (source == DetectSource.SMS && parsed.accountDigits != null && accountId != null && prefs.smsBanks[key] == null) {
-            settings.learnSmsBank(key, accountId)
+        if (source == DetectSource.SMS) {
+            // Not known yet: the account named after the bank ("SBI", "Kalupur"…), if there's exactly one.
+            if (accountId == null) {
+                accountId = accountList.filter { !it.isUpiLite && !it.archived && SmsSources.nameMatches(key, it.name) }
+                    .singleOrNull()?.id
+            }
+            if (accountId != null) {
+                // Learn it, so this bank's messages without digits (top-ups) still match…
+                if (prefs.smsBanks[key] == null) settings.learnSmsBank(key, accountId)
+                // …and keep the digits on the account (only when it had none).
+                val account = accountList.firstOrNull { it.id == accountId }
+                if (account != null && account.digits == null && parsed.accountDigits != null && !account.isUpiLite) {
+                    runCatching { accounts.save(account.copy(digits = parsed.accountDigits)) }
+                }
+            }
         }
         var toAccount: Long? = null
         var counterparty = parsed.counterparty

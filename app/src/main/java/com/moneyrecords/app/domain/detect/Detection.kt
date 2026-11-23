@@ -119,6 +119,10 @@ interface DetectionRepository {
 interface DetectedPrompts {
     fun cancel(id: Long)
     suspend fun refreshSummary(alert: Boolean = false)
+    /** Shows [id]'s prompt again if it still isn't recorded or dismissed (fire-and-forget). */
+    fun remindIfOpen(id: Long)
+    /** While [id]'s record dialog is open its prompt isn't shown (and is cleared). */
+    fun editing(id: Long, open: Boolean)
 }
 
 object DetectionText {

@@ -32,15 +32,30 @@ fun RecordItem(
 ) {
     val record = details.record
     val isTransfer = record.kind == RecordKind.TRANSFER
+    val repayment = record.isRepayment
     val title = when {
+        repayment -> "Repaid" + (record.person?.let { " · $it" } ?: "")
         isTransfer -> "Transfer"
         else -> details.categoryName ?: "Uncategorised"
     }
-    val where = if (isTransfer) "${details.accountName} → ${details.toAccountName ?: "?"}" else details.accountName
+    val where = when {
+        // Waiting in SBI until it's moved back to the account that paid.
+        repayment -> "In ${details.toAccountName ?: "?"} · to move back"
+        isTransfer -> "${details.accountName} → ${details.toAccountName ?: "?"}"
+        else -> details.accountName
+    }
+    val splitLine = when {
+        record.isSplit -> "Your share of ${Money.format(record.splitTotal!!)}"
+        // A friend's part: spending until it's paid back and moved.
+        record.isToCollect -> "To collect · ${record.person ?: "others"}" +
+            if (details.splitWaiting > 0) " · ${Money.format(details.splitWaiting)} received" else ""
+        else -> null
+    }
     val parts = buildList {
         if (subtitlePrefix != null) add(subtitlePrefix)
         if (showTime) add(record.occurredAt.atZone(zone).format(timeFormat))
         add(where)
+        splitLine?.let(::add)
         if (record.note.isNotBlank()) add(record.note)
         if (record.recurringRuleId != null) add("↻")
     }
@@ -49,10 +64,16 @@ fun RecordItem(
             when (record.kind) {
                 RecordKind.EXPENSE -> "Expense, $title"
                 RecordKind.INCOME -> "Income, $title"
-                RecordKind.TRANSFER -> "Transfer from ${details.accountName} to ${details.toAccountName ?: "unknown account"}"
+                RecordKind.TRANSFER -> if (repayment) "Repaid${record.person?.let { " by $it" } ?: ""}, waiting in ${details.toAccountName}"
+                else "Transfer from ${details.accountName} to ${details.toAccountName ?: "unknown account"}"
             },
         )
         add(Money.spoken(record.amount))
+        record.splitTotal?.let { total -> add("your share of a ${Money.spoken(total)} bill") }
+        if (record.isToCollect) {
+            add("to collect from ${record.person ?: "others"}")
+            if (details.splitWaiting > 0) add("${Money.spoken(details.splitWaiting)} received")
+        }
         if (subtitlePrefix != null) add(subtitlePrefix)
         if (showTime) add(record.occurredAt.atZone(zone).format(timeFormat))
         if (!isTransfer) add(details.accountName)
@@ -62,18 +83,20 @@ fun RecordItem(
     ListRow(
         title = title,
         subtitle = parts.joinToString(" · "),
+        subtitleLines = if (splitLine != null) 2 else 1,
+        onLongClickLabel = if (record.isToCollect || record.isRepayment) null else "Duplicate",
         icon = if (isTransfer) Icons.AutoMirrored.Outlined.CompareArrows else null,
         iconKey = if (isTransfer) null else details.categoryIconKey ?: "other",
         modifier = modifier,
         onClick = onClick,
         onLongClick = onLongClick,
-        onLongClickLabel = "Duplicate",
         spokenText = spoken,
         trailing = {
             when (record.kind) {
                 RecordKind.EXPENSE -> AmountText(-record.amount, sign = Money.Sign.ALWAYS, color = MrTheme.colors.expense)
                 RecordKind.INCOME -> AmountText(record.amount, sign = Money.Sign.ALWAYS, color = MrTheme.colors.positive)
-                RecordKind.TRANSFER -> AmountText(record.amount, color = MrTheme.colors.transfer)
+                RecordKind.TRANSFER -> if (repayment) AmountText(record.amount, sign = Money.Sign.ALWAYS, color = MrTheme.colors.positive)
+                else AmountText(record.amount, color = MrTheme.colors.transfer)
             }
         },
     )

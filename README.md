@@ -53,6 +53,13 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
   income, spending, transfers and each category). Budget status is always white / yellow (80%+) / red (over).
 - **Polish**: instant navigation, haptics throughout, amounts read aloud in words by screen readers,
   48dp touch targets, and layouts that hold at large font sizes and in landscape.
+- **Split bills** (paying for friends): tick **Split** on an expense — equal shares by default, any
+  share editable, names optional. Your share and each friend's part are real expenses, so whoever never
+  pays stays on record. **To collect** lists what's owed (this month first, earlier months kept with what
+  wasn't paid back); **Received** records a repayment (not income) wherever it arrived, per bill or one
+  payment for several. When you move the money back to the account that paid, **Move** folds it in —
+  the friend's part and the repayment disappear, as if it came straight back. Balances always match
+  the bank; deleting a bill is blocked while its repayment is still waiting.
 - **Floating calculator**: a slim handle on the right edge of every screen with a Copy button; can be
   turned off in Settings.
 

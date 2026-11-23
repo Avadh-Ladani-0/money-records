@@ -48,6 +48,7 @@ import com.moneyrecords.app.ui.components.rememberHaptics
 import com.moneyrecords.app.ui.feature.budgets.label
 import com.moneyrecords.app.ui.feature.budgets.statusColor
 import com.moneyrecords.app.ui.feature.record.friendly
+import com.moneyrecords.app.ui.feature.collect.MoveCard
 import com.moneyrecords.app.ui.icons.categoryColor
 import com.moneyrecords.app.ui.theme.MrTheme
 import com.moneyrecords.app.ui.theme.Space
@@ -68,6 +69,8 @@ fun HomeScreen(
     onOpenBudgets: () -> Unit,
     onEditDue: (Long) -> Unit,
     onOpenRecurring: () -> Unit,
+    onOpenToCollect: () -> Unit,
+    onMoved: (message: String, undo: () -> Unit) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -96,6 +99,44 @@ fun HomeScreen(
                 )
             }
             return@LazyColumn
+        }
+
+        // Paid for friends: what's owed, and collected money waiting to go back to UPI Lite.
+        if (state.toCollect > 0 || state.toCollectEarlier > 0 || state.awaiting.isNotEmpty()) {
+            item(key = "collect-label") { Section("To collect", action = "All" to onOpenToCollect) }
+            state.awaiting.forEach { move ->
+                item(key = "move-${move.payerAccountId}-${move.heldInAccountId}") {
+                    MoveCard(
+                        move,
+                        onMove = { amount -> viewModel.move(move, amount) { undo -> onMoved("Moved ${Money.format(amount)} to ${move.payerName}", undo) } },
+                        modifier = Modifier.animateItem().padding(bottom = Space.sm),
+                    )
+                }
+            }
+            if (state.toCollect > 0 || state.toCollectEarlier > 0) item(key = "collect") {
+                MrCard(onClick = onOpenToCollect, modifier = Modifier.animateItem(), contentPadding = PaddingValues(horizontal = Space.xl, vertical = Space.lg)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Owed to you this month", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                if (state.toCollectBills == 0) "Nothing for this month"
+                                else "${state.toCollectBills} ${if (state.toCollectBills == 1) "bill" else "bills"} · tap to mark received",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        AmountText(state.toCollect, style = MaterialTheme.typography.titleMedium, animate = true)
+                    }
+                    if (state.toCollectEarlier > 0) {
+                        Spacer(Modifier.height(Space.sm))
+                        Text(
+                            "${Money.format(state.toCollectEarlier)} not paid back from earlier months",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
         }
 
         item(key = "budget-label") { Section("Budget · $monthName") }

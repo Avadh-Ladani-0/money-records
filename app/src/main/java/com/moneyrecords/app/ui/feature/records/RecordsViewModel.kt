@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.time.Clock
 import java.time.LocalDate
 import java.time.YearMonth
@@ -74,6 +75,7 @@ class RecordsViewModel @Inject constructor(
     private val records: RecordRepository,
     accounts: AccountRepository,
     categories: CategoryRepository,
+    private val splits: com.moneyrecords.app.domain.repository.SplitRepository,
     private val clock: Clock,
 ) : ViewModel() {
     private val query = MutableStateFlow(RecordsQuery(month = YearMonth.now(clock)))
@@ -101,6 +103,11 @@ class RecordsViewModel @Inject constructor(
             incomeCategories = incomeTree,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RecordsState(query = query.value))
+
+    /** A friend's repayment that didn't actually arrive: remove it; the amount is owed again. */
+    fun unreceive(repaymentId: Long) {
+        viewModelScope.launch { runCatching { splits.unreceive(repaymentId) } }
+    }
 
     fun previousMonth() = query.update { it.copy(month = it.month.minusMonths(1), range = null) }
     fun nextMonth() = query.update { it.copy(month = it.month.plusMonths(1), range = null) }

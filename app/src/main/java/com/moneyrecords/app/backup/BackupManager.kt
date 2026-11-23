@@ -136,7 +136,7 @@ class BackupManager @Inject constructor(
     }
 
     companion object {
-        const val DB_VERSION = 3
+        const val DB_VERSION = 4
         const val KEEP_SAFETY_COPIES = 3
     }
 }

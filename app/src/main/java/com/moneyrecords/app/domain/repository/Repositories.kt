@@ -110,3 +110,37 @@ interface BudgetRepository {
     /** Replaces [target]'s counted-back records for [month] with [recordIds]. */
     suspend fun setOffsets(target: BudgetTarget, month: YearMonth, recordIds: Set<Long>)
 }
+
+/**
+ * Bills paid for a group. Your share and each friend's part are real expenses; a friend's part
+ * stays spending until their money comes back and is moved to the account that paid.
+ */
+interface SplitRepository {
+    /** Saves [expense] (its amount = the whole bill) split by [spec]; returns the bill's id. */
+    suspend fun saveSplit(expense: com.moneyrecords.app.domain.model.Record, spec: com.moneyrecords.app.domain.split.SplitSpec): Long
+    /** Turns a split bill back into a plain expense of its whole amount (only before any repayment). */
+    suspend fun removeSplit(expenseId: Long)
+    /** The current split of a split bill, or null. */
+    suspend fun splitOf(expenseId: Long): com.moneyrecords.app.domain.split.SplitSpec?
+    /** True once anything has been paid back (the amount and split can no longer change). */
+    suspend fun hasRepayments(expenseId: Long): Boolean
+    /** Copies a bill's category, date and note to its friends' parts. */
+    suspend fun updateBillDetails(expenseId: Long, categoryId: Long?, occurredAt: java.time.Instant, note: String)
+    /** A friend paid back [amount] of one part into [accountId]. */
+    suspend fun receive(legId: Long, amount: Long, accountId: Long)
+    /** [person] paid back [amount] for several bills: spread oldest first. */
+    suspend fun receiveFromPerson(person: String, amount: Long, accountId: Long)
+    /** "Didn't actually arrive": removes a waiting repayment; the amount is owed again. */
+    suspend fun unreceive(repaymentId: Long)
+    fun observeOpen(): Flow<List<com.moneyrecords.app.domain.split.OpenPart>>
+    fun observeAwaitingMove(): Flow<List<com.moneyrecords.app.domain.split.AwaitingMove>>
+    /**
+     * Moves [amount] of what's waiting in [heldInId] back to [payerId] (oldest first): the friends'
+     * parts shrink by it and the repayments go. Returns a token for [undoMove].
+     */
+    suspend fun moveCollected(payerId: Long, heldInId: Long, amount: Long): Any
+    suspend fun undoMove(token: Any)
+    /** Why [recordId] can't be deleted right now (a repayment for it is waiting), or null. */
+    suspend fun deleteBlockReason(recordId: Long): String?
+    fun observePeople(): Flow<List<String>>
+}

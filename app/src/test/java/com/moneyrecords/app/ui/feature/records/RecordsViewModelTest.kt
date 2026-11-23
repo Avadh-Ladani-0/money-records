@@ -50,7 +50,7 @@ class RecordsViewModelTest {
                 rec(5, RecordKind.EXPENSE, 999_00, "2026-10-05T09:00:00Z"),
             ),
         )
-        vm = RecordsViewModel(records, FakeAccounts(listOf(TestData.cash, TestData.bank)), FakeCategories(TestData.trees), clock)
+        vm = RecordsViewModel(records, FakeAccounts(listOf(TestData.cash, TestData.bank)), FakeCategories(TestData.trees), com.moneyrecords.app.testing.FakeSplits(), clock)
     }
 
     @After fun tearDown() = Dispatchers.resetMain()

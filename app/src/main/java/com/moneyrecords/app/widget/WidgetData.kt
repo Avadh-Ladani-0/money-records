@@ -31,6 +31,7 @@ interface WidgetEntryPoint {
     fun records(): RecordRepository
     fun budgets(): BudgetRepository
     fun prefs(): UserPrefsRepository
+    fun splits(): com.moneyrecords.app.domain.repository.SplitRepository
     fun clock(): Clock
 }
 
@@ -56,6 +57,8 @@ data class WidgetSnapshot(
     val todaySpent: Long,
     val overall: WidgetBudget?,
     val budgets: List<WidgetBudget>,
+    /** Owed to you by friends. */
+    val toCollect: Long = 0,
 ) {
     val net: Long get() = income - expense
 
@@ -84,6 +87,7 @@ data class WidgetSnapshot(
                     .sumOf { it.record.amount },
                 overall = overview.overall?.toWidget(),
                 budgets = overview.all.map { it.toWidget() },
+                toCollect = e.splits().observeOpen().first().sumOf { it.outstanding },
             )
         }
 

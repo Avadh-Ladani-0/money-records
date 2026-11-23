@@ -63,9 +63,10 @@ data class BackupCounts(
 }
 
 fun BackupData.counts() = BackupCounts(
-    accounts = accounts.size,
+    accounts = accounts.count { !it.system },
     categories = categories.size,
-    records = records.size,
+    // Count what the Records list shows: a ₹0 "your share" is only a hidden anchor for its parts.
+    records = records.count { !(it.splitTotal != null && it.amount == 0L) },
     recurring = recurringRules.size,
     // Stop markers (limit 0) aren't budgets the user would count.
     budgets = budgets.count { it.limitAmount > 0 },
@@ -89,6 +90,7 @@ data class BackupSettings(
 @Serializable data class AccountRow(
     val id: Long, val name: String, val type: String, val openingBalance: Long, val iconKey: String,
     val archived: Boolean, val sortOrder: Int, val createdAt: Long,
+    val system: Boolean = false,
 )
 
 @Serializable data class CategoryRow(
@@ -106,6 +108,8 @@ data class BackupSettings(
     val id: Long, val kind: String, val amount: Long, val accountId: Long, val toAccountId: Long? = null,
     val categoryId: Long? = null, val occurredAt: Long, val note: String, val recurringRuleId: Long? = null,
     val createdAt: Long, val updatedAt: Long,
+    // Split payments (app DB v4); absent in older backups.
+    val splitOf: Long? = null, val person: String? = null, val awaitingMove: Boolean = false, val splitTotal: Long? = null,
 )
 
 @Serializable data class BudgetRow(
@@ -119,8 +123,8 @@ data class BackupSettings(
 
 // ── Entity ↔ row ────────────────────────────────────────────────────────────────────────────────
 
-fun AccountEntity.toRow() = AccountRow(id, name, type.name, openingBalance, iconKey, archived, sortOrder, createdAt)
-fun AccountRow.toEntity() = AccountEntity(id, name, AccountType.valueOf(type), openingBalance, iconKey, archived, sortOrder, createdAt)
+fun AccountEntity.toRow() = AccountRow(id, name, type.name, openingBalance, iconKey, archived, sortOrder, createdAt, system)
+fun AccountRow.toEntity() = AccountEntity(id, name, AccountType.valueOf(type), openingBalance, iconKey, archived, sortOrder, createdAt, system)
 
 fun CategoryEntity.toRow() = CategoryRow(id, name, kind.name, parentId, iconKey, archived, sortOrder)
 fun CategoryRow.toEntity() = CategoryEntity(id, name, CategoryKind.valueOf(kind), parentId, iconKey, archived, sortOrder)
@@ -133,9 +137,13 @@ fun RecurringRuleRow.toEntity() = RecurringRuleEntity(
     startDate, endDate, nextRunDate, active,
 )
 
-fun RecordEntity.toRow() = RecordRow(id, kind.name, amount, accountId, toAccountId, categoryId, occurredAt, note, recurringRuleId, createdAt, updatedAt)
+fun RecordEntity.toRow() = RecordRow(
+    id, kind.name, amount, accountId, toAccountId, categoryId, occurredAt, note, recurringRuleId, createdAt, updatedAt,
+    splitOf, person, awaitingMove, splitTotal,
+)
 fun RecordRow.toEntity() = RecordEntity(
     id, RecordKind.valueOf(kind), amount, accountId, toAccountId, categoryId, occurredAt, note, recurringRuleId, createdAt, updatedAt,
+    splitOf, person, awaitingMove, splitTotal,
 )
 
 fun BudgetEntity.toRow() = BudgetRow(id, scope.name, categoryId, accountId, yearMonth, limitAmount)

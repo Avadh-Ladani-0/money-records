@@ -53,7 +53,18 @@ data class Record(
     val occurredAt: Instant,
     val note: String = "",
     val recurringRuleId: Long? = null,
-)
+    /** Split payments: see RecordEntity. [splitTotal] set = this expense was split ([amount] = your share). */
+    val splitOf: Long? = null,
+    val person: String? = null,
+    val awaitingMove: Boolean = false,
+    val splitTotal: Long? = null,
+) {
+    val isSplit: Boolean get() = splitTotal != null
+    /** A friend's part of a split bill — spending until it's paid back and moved. */
+    val isToCollect: Boolean get() = kind == RecordKind.EXPENSE && splitOf != null
+    /** A repayment from a friend waiting to be moved (shown in lists as "Repaid"). */
+    val isRepayment: Boolean get() = kind == RecordKind.TRANSFER && splitOf != null && awaitingMove
+}
 
 /** A record with the names the UI shows next to it. */
 data class RecordDetails(
@@ -62,6 +73,10 @@ data class RecordDetails(
     val toAccountName: String?,
     val categoryName: String?,
     val categoryIconKey: String?,
+    /** For a split expense: what friends still owe on it. */
+    val splitOutstanding: Long = 0,
+    /** For a friend's part: repaid into another account, waiting to be moved back. */
+    val splitWaiting: Long = 0,
 )
 
 data class RecordFilter(

@@ -35,6 +35,8 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.InputChipDefaults
@@ -75,6 +77,7 @@ fun RecordsScreen(
     onOpenSettings: () -> Unit,
     onOpenRecord: (Long) -> Unit,
     onDuplicateRecord: (Long) -> Unit,
+    onOpenToCollect: () -> Unit,
     viewModel: RecordsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -82,6 +85,7 @@ fun RecordsScreen(
     val q = state.query
     var searching by rememberSaveable { mutableStateOf(false) }
     var showFilters by rememberSaveable { mutableStateOf(false) }
+    var removingRepayment by remember { mutableStateOf<com.moneyrecords.app.domain.model.RecordDetails?>(null) }
     val zone = remember { ZoneId.systemDefault() }
     val monthFormat = remember { DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()) }
     val shortDate = remember { DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()) }
@@ -204,10 +208,18 @@ fun RecordsScreen(
                 }
             }
             items(day.records, key = { it.record.id }) { details ->
+                val r = details.record
                 RecordItem(
                     details = details,
-                    onClick = { onOpenRecord(details.record.id) },
-                    onLongClick = { haptics.longPress(); onDuplicateRecord(details.record.id) },
+                    onClick = {
+                        when {
+                            // A friend's part is managed with its bill in To collect.
+                            r.isToCollect -> onOpenToCollect()
+                            r.isRepayment -> removingRepayment = details
+                            else -> onOpenRecord(r.id)
+                        }
+                    },
+                    onLongClick = { if (!r.isToCollect && !r.isRepayment) { haptics.longPress(); onDuplicateRecord(r.id) } },
                     zone = zone,
                     modifier = Modifier.animateItem(),
                 )
@@ -216,6 +228,24 @@ fun RecordsScreen(
         item { Spacer(Modifier.height(Space.fabClearance)) }
     }
 
+    removingRepayment?.let { d ->
+        AlertDialog(
+            onDismissRequest = { removingRepayment = null },
+            title = { Text("Repaid ${Money.format(d.record.amount)}" + (d.record.person?.let { " by $it" } ?: "")) },
+            text = {
+                Text(
+                    "It's waiting in ${d.toAccountName} to be moved back (Home → To collect). " +
+                        "Remove it only if the money didn't actually arrive — the amount will be owed again.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.unreceive(d.record.id); removingRepayment = null }) {
+                    Text("It didn't arrive — remove", color = MrTheme.colors.danger)
+                }
+            },
+            dismissButton = { TextButton(onClick = { removingRepayment = null }) { Text("Keep") } },
+        )
+    }
     if (showFilters) {
         FilterSheet(state = state, viewModel = viewModel, onDismiss = { showFilters = false })
     }

@@ -25,6 +25,8 @@ data class AccountEntity(
     val archived: Boolean = false,
     val sortOrder: Int = 0,
     val createdAt: Long,
+    /** The hidden "To collect" account (money friends owe you); never listed (DB version 4). */
+    @ColumnInfo(defaultValue = "0") val system: Boolean = false,
 )
 
 @Entity(
@@ -78,7 +80,10 @@ data class RecurringRuleEntity(
         ForeignKey(entity = CategoryEntity::class, parentColumns = ["id"], childColumns = ["categoryId"], onDelete = ForeignKey.RESTRICT),
         ForeignKey(entity = RecurringRuleEntity::class, parentColumns = ["id"], childColumns = ["recurringRuleId"], onDelete = ForeignKey.SET_NULL),
     ],
-    indices = [Index("accountId"), Index("toAccountId"), Index("categoryId"), Index("occurredAt"), Index("recurringRuleId")],
+    indices = [
+        Index("accountId"), Index("toAccountId"), Index("categoryId"), Index("occurredAt"), Index("recurringRuleId"),
+        Index("splitOf"),
+    ],
 )
 data class RecordEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -93,6 +98,15 @@ data class RecordEntity(
     val recurringRuleId: Long? = null,
     val createdAt: Long,
     val updatedAt: Long,
+    // ── Split payments (DB version 4) ──
+    /** On a to-collect part: the split expense it belongs to. On a repayment: the part it repays. */
+    val splitOf: Long? = null,
+    /** Who owes a to-collect part (optional). */
+    val person: String? = null,
+    /** A repayment that arrived in another account and hasn't been moved to the payer yet. */
+    @ColumnInfo(defaultValue = "0") val awaitingMove: Boolean = false,
+    /** On a split expense: the whole bill paid ([amount] is your share). */
+    val splitTotal: Long? = null,
 )
 
 @Entity(
@@ -148,6 +162,10 @@ data class RecordRow(
     val toAccountName: String?,
     val categoryName: String?,
     val categoryIconKey: String?,
+    /** For a split expense: what friends still owe on it. */
+    val splitOutstanding: Long = 0,
+    /** For a friend's part: repaid into another account, waiting to be moved back. */
+    val splitWaiting: Long = 0,
 )
 
 data class TotalsRow(val income: Long, val expense: Long)
@@ -166,3 +184,20 @@ data class AccountSpend(val accountId: Long, val total: Long)
 
 /** A counted-back record's amount, keyed by the budget line it belongs to. */
 data class OffsetRow(val scope: BudgetScope, val categoryId: Long?, val accountId: Long?, val amount: Long)
+
+data class OpenPartRow(
+    val legId: Long,
+    val person: String?,
+    val payerId: Long,
+    val payerName: String,
+    val expenseId: Long,
+    val note: String,
+    val occurredAt: Long,
+    val categoryName: String?,
+    val categoryIconKey: String?,
+    val billTotal: Long?,
+    val outstanding: Long,
+    val waiting: Long,
+)
+
+data class AwaitingMoveRow(val payerId: Long, val payerName: String, val heldIn: Long, val heldInName: String, val total: Long, val count: Int)

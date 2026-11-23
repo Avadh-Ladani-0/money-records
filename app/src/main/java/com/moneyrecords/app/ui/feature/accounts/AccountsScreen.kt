@@ -41,6 +41,7 @@ import com.moneyrecords.app.domain.money.Money
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.outlined.Groups
 import com.moneyrecords.app.ui.icons.AppIcons
 import com.moneyrecords.app.ui.theme.MrTheme
 import com.moneyrecords.app.ui.theme.Space
@@ -48,6 +49,7 @@ import com.moneyrecords.app.ui.theme.Space
 @Composable
 fun AccountsScreen(
     onOpenSettings: () -> Unit,
+    onOpenToCollect: () -> Unit,
     onAddAccount: () -> Unit,
     onOpenAccount: (Long) -> Unit,
     viewModel: AccountsViewModel = hiltViewModel(),
@@ -85,6 +87,16 @@ fun AccountsScreen(
         if (!state.loading) item(key = "summary") {
             Summary(state)
             Spacer(Modifier.height(Space.lg))
+        }
+        if (state.toCollect > 0) item(key = "to-collect") {
+            ListRow(
+                title = "To collect",
+                subtitle = "Owed to you for bills you split",
+                icon = Icons.Outlined.Groups,
+                onClick = onOpenToCollect,
+                trailing = { AmountText(state.toCollect, animate = true) },
+            )
+            Spacer(Modifier.height(Space.sm))
         }
 
         items(state.active, key = { it.id }) { account ->

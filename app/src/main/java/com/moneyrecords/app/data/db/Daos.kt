@@ -23,7 +23,7 @@ interface AccountDao {
             + COALESCE((SELECT SUM(r.amount) FROM records r WHERE r.toAccountId = a.id AND r.kind = 'TRANSFER'), 0)
             AS balance
         FROM accounts a
-        WHERE (:includeArchived OR a.archived = 0)
+        WHERE (:includeArchived OR a.archived = 0) AND a.system = 0
         ORDER BY a.sortOrder, a.name COLLATE NOCASE
         """,
     )
@@ -43,6 +43,9 @@ interface AccountDao {
 
     @Query("SELECT COALESCE(MAX(sortOrder), -1) + 1 FROM accounts")
     suspend fun nextSortOrder(): Int
+
+    @Query("SELECT * FROM accounts WHERE system = 1 LIMIT 1")
+    suspend fun systemAccount(): AccountEntity?
 
     @Query(
         """
@@ -103,12 +106,21 @@ interface RecordDao {
     @Query(
         """
         SELECT r.*, a.name AS accountName, ta.name AS toAccountName,
-               c.name AS categoryName, c.iconKey AS categoryIconKey
+               c.name AS categoryName, c.iconKey AS categoryIconKey,
+               CASE WHEN r.splitTotal IS NULL THEN 0 ELSE
+                   COALESCE((SELECT SUM(l.amount) FROM records l WHERE l.splitOf = r.id), 0)
+                 - COALESCE((SELECT SUM(p.amount) FROM records p WHERE p.splitOf IN (SELECT id FROM records WHERE splitOf = r.id)), 0)
+               END AS splitOutstanding,
+               CASE WHEN r.kind = 'EXPENSE' AND r.splitOf IS NOT NULL
+                    THEN COALESCE((SELECT SUM(p.amount) FROM records p WHERE p.splitOf = r.id AND p.awaitingMove = 1), 0)
+                    ELSE 0 END AS splitWaiting
         FROM records r
         JOIN accounts a ON a.id = r.accountId
         LEFT JOIN accounts ta ON ta.id = r.toAccountId
         LEFT JOIN categories c ON c.id = r.categoryId
-        WHERE (:allAccounts OR r.accountId IN (:accountIds) OR r.toAccountId IN (:accountIds))
+        -- A bill where your share is ₹0 is only an anchor for its parts; the parts are the rows.
+        WHERE NOT (r.splitTotal IS NOT NULL AND r.amount = 0)
+          AND (:allAccounts OR r.accountId IN (:accountIds) OR r.toAccountId IN (:accountIds))
           AND (:allCategories OR r.categoryId IN (:categoryIds) OR c.parentId IN (:categoryIds))
           AND (:kind IS NULL OR r.kind = :kind)
           AND (:from IS NULL OR r.occurredAt >= :from)
@@ -116,7 +128,8 @@ interface RecordDao {
           AND (:query IS NULL
                OR r.note LIKE '%' || :query || '%' ESCAPE '\'
                OR c.name LIKE '%' || :query || '%' ESCAPE '\'
-               OR a.name LIKE '%' || :query || '%' ESCAPE '\')
+               OR a.name LIKE '%' || :query || '%' ESCAPE '\'
+               OR r.person LIKE '%' || :query || '%' ESCAPE '\')
         ORDER BY r.occurredAt DESC, r.id DESC
         LIMIT :limit
         """,
@@ -159,6 +172,9 @@ interface RecordDao {
         """
         SELECT accountId, SUM(amount) AS total FROM records
         WHERE kind IN ('EXPENSE', 'TRANSFER') AND occurredAt >= :from AND occurredAt < :to
+          -- Paying for friends isn't your spending: their parts go to the hidden To-collect account.
+          AND (toAccountId IS NULL OR toAccountId NOT IN (SELECT id FROM accounts WHERE system = 1))
+          AND accountId NOT IN (SELECT id FROM accounts WHERE system = 1)
         GROUP BY accountId
         """,
     )
@@ -171,7 +187,7 @@ interface RecordDao {
     @Query(
         """
         SELECT r.*, a.name AS accountName, ta.name AS toAccountName,
-               c.name AS categoryName, c.iconKey AS categoryIconKey
+               c.name AS categoryName, c.iconKey AS categoryIconKey, 0 AS splitOutstanding, 0 AS splitWaiting
         FROM records r
         JOIN accounts a ON a.id = r.accountId
         LEFT JOIN accounts ta ON ta.id = r.toAccountId
@@ -195,6 +211,82 @@ interface RecordDao {
 
     @Query("DELETE FROM records WHERE id = :id")
     suspend fun delete(id: Long)
+
+    // ── Split payments ──
+
+    @Query("SELECT * FROM records WHERE splitOf = :id ORDER BY id")
+    suspend fun children(id: Long): List<RecordEntity>
+
+    /** Deletes a record's split parts and their repayments (call before deleting the record). */
+    @Query("DELETE FROM records WHERE splitOf IN (SELECT id FROM records WHERE splitOf = :id)")
+    suspend fun deleteGrandchildren(id: Long)
+
+    @Query("DELETE FROM records WHERE splitOf = :id")
+    suspend fun deleteChildren(id: Long)
+
+    /** Open to-collect parts: what's left on each, newest bill first, with the bill's details. */
+    @Query(
+        """
+        SELECT l.id AS legId, l.person AS person, l.accountId AS payerId, pa.name AS payerName,
+               e.id AS expenseId, e.note AS note, e.occurredAt AS occurredAt, c.name AS categoryName,
+               c.iconKey AS categoryIconKey, e.splitTotal AS billTotal,
+               l.amount - COALESCE((SELECT SUM(p.amount) FROM records p WHERE p.splitOf = l.id), 0) AS outstanding,
+               COALESCE((SELECT SUM(p.amount) FROM records p WHERE p.splitOf = l.id AND p.awaitingMove = 1), 0) AS waiting
+        FROM records l
+        JOIN records e ON e.id = l.splitOf
+        JOIN accounts pa ON pa.id = l.accountId
+        LEFT JOIN categories c ON c.id = e.categoryId
+        WHERE l.kind = 'EXPENSE' AND l.splitOf IS NOT NULL
+        ORDER BY e.occurredAt DESC, l.id
+        """,
+    )
+    fun observeOpenParts(): Flow<List<OpenPartRow>>
+
+    /** Repayments waiting to be moved, per account they should go back to (the original payer). */
+    @Query(
+        """
+        SELECT l.accountId AS payerId, pa.name AS payerName, p.toAccountId AS heldIn, ha.name AS heldInName,
+               SUM(p.amount) AS total, COUNT(*) AS count
+        FROM records p
+        JOIN records l ON l.id = p.splitOf
+        JOIN accounts pa ON pa.id = l.accountId
+        JOIN accounts ha ON ha.id = p.toAccountId
+        WHERE p.awaitingMove = 1
+        GROUP BY l.accountId, p.toAccountId
+        ORDER BY total DESC
+        """,
+    )
+    fun observeAwaitingMove(): Flow<List<AwaitingMoveRow>>
+
+    @Query(
+        """
+        SELECT p.* FROM records p JOIN records l ON l.id = p.splitOf
+        WHERE p.awaitingMove = 1 AND l.accountId = :payerId AND p.toAccountId = :heldInId
+        ORDER BY p.occurredAt, p.id
+        """,
+    )
+    suspend fun awaitingFor(payerId: Long, heldInId: Long): List<RecordEntity>
+
+    /** Waiting repayments for [recordId] (a part) or for any part of [recordId] (a bill). */
+    @Query(
+        """
+        SELECT * FROM records WHERE awaitingMove = 1
+          AND (splitOf = :recordId OR splitOf IN (SELECT id FROM records WHERE splitOf = :recordId))
+        """,
+    )
+    suspend fun waitingFor(recordId: Long): List<RecordEntity>
+
+    @Query("UPDATE records SET categoryId = :categoryId, occurredAt = :occurredAt, note = :note, updatedAt = :now WHERE splitOf = :expenseId AND kind = 'EXPENSE'")
+    suspend fun updatePartDetails(expenseId: Long, categoryId: Long?, occurredAt: Long, note: String, now: Long)
+
+    @Query("SELECT DISTINCT person FROM records WHERE person IS NOT NULL AND person != '' ORDER BY person COLLATE NOCASE")
+    fun observePeople(): Flow<List<String>>
+
+    @Query("DELETE FROM records WHERE splitOf = :legId")
+    suspend fun deleteGrandchildrenOfLeg(legId: Long)
+
+    @Query("UPDATE records SET amount = :amount WHERE id = :id")
+    suspend fun setAmount(id: Long, amount: Long)
 }
 
 @Dao

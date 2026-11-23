@@ -122,6 +122,9 @@ class FakePrefs : UserPrefsRepository {
     override suspend fun setLastBudgetPrompt(month: YearMonth) { lastPrompt = month }
     override suspend fun recordDefaults(kind: RecordKind) = defaults[kind] ?: RecordDefaults()
     override suspend fun rememberRecordDefaults(kind: RecordKind, defaults: RecordDefaults) { this.defaults[kind] = defaults }
+    val repayment = MutableStateFlow<Long?>(null)
+    override fun observeRepaymentAccount(): Flow<Long?> = repayment
+    override suspend fun setRepaymentAccount(id: Long) { repayment.value = id }
     val theme = MutableStateFlow("NOTHING")
     override fun observeTheme(): Flow<String> = theme
     override suspend fun setTheme(key: String) { theme.value = key }
@@ -195,4 +198,25 @@ object TestData {
     val fuel = Category(id = 12, name = "Fuel", kind = CategoryKind.EXPENSE, iconKey = "fuel")
     val salary = Category(id = 20, name = "Salary", kind = CategoryKind.INCOME, iconKey = "salary")
     val trees = mapOf(CategoryKind.EXPENSE to listOf(food, fuel), CategoryKind.INCOME to listOf(salary))
+}
+
+class FakeSplits : com.moneyrecords.app.domain.repository.SplitRepository {
+    val saved = mutableListOf<Pair<com.moneyrecords.app.domain.model.Record, com.moneyrecords.app.domain.split.SplitSpec>>()
+    var blockReason: String? = null
+    override suspend fun saveSplit(expense: com.moneyrecords.app.domain.model.Record, spec: com.moneyrecords.app.domain.split.SplitSpec): Long {
+        saved += expense to spec; return saved.size.toLong()
+    }
+    override suspend fun removeSplit(expenseId: Long) {}
+    override suspend fun splitOf(expenseId: Long): com.moneyrecords.app.domain.split.SplitSpec? = null
+    override suspend fun hasRepayments(expenseId: Long) = false
+    override suspend fun updateBillDetails(expenseId: Long, categoryId: Long?, occurredAt: java.time.Instant, note: String) {}
+    override suspend fun receive(legId: Long, amount: Long, accountId: Long) {}
+    override suspend fun receiveFromPerson(person: String, amount: Long, accountId: Long) {}
+    override suspend fun unreceive(repaymentId: Long) {}
+    override fun observeOpen() = kotlinx.coroutines.flow.flowOf(emptyList<com.moneyrecords.app.domain.split.OpenPart>())
+    override fun observeAwaitingMove() = kotlinx.coroutines.flow.flowOf(emptyList<com.moneyrecords.app.domain.split.AwaitingMove>())
+    override suspend fun moveCollected(payerId: Long, heldInId: Long, amount: Long): Any = Unit
+    override suspend fun undoMove(token: Any) {}
+    override suspend fun deleteBlockReason(recordId: Long) = blockReason
+    override fun observePeople() = kotlinx.coroutines.flow.flowOf(emptyList<String>())
 }

@@ -1,5 +1,9 @@
 package com.moneyrecords.app.ui.feature.record
 
+import com.moneyrecords.app.domain.repository.SplitRepository
+import com.moneyrecords.app.domain.split.Split
+import com.moneyrecords.app.domain.split.SplitPart
+import com.moneyrecords.app.domain.split.SplitSpec
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -102,9 +106,17 @@ data class RecordEditorState(
     val repeat: RepeatSpec? = null,
     /** Editing a record created by a repeat: that repeat (kept up to date). */
     val linkedRule: RecurringRuleDetails? = null,
+    /** Expenses only: this bill was paid for a group. Amount on screen = the whole bill. */
+    val split: SplitDraft? = null,
+    /** Something was already paid back, so the bill amount and split can't change. */
+    val splitLocked: Boolean = false,
+    val people: List<String> = emptyList(),
     val error: String? = null,
     val saving: Boolean = false,
 ) {
+    /** The split as it would be saved, for the current amount. */
+    val splitSpec: SplitSpec? get() = split?.let { d -> amountPaise?.let { d.toSpec(it) } }
+
     val amountPaise: Long? get() = Expression.evaluateToPaise(amountText)
 
     /** "= ₹1,550" when the input is a calculation with a valid result. */
@@ -126,7 +138,10 @@ data class RecordEditorState(
 
 sealed interface RecordEditorEvent {
     data object Saved : RecordEditorEvent
-    data class Deleted(val record: Record) : RecordEditorEvent
+    /** [split] is set when a split bill was deleted, so Undo can bring the whole split back. */
+    data class Deleted(val record: Record, val split: SplitSpec? = null, val canUndo: Boolean = true) : RecordEditorEvent
+    /** Deleting was refused; [reason] says why (shown in a dialog). */
+    data class CantDelete(val reason: String) : RecordEditorEvent
 }
 
 @HiltViewModel
@@ -138,6 +153,7 @@ class RecordEditorViewModel @Inject constructor(
     private val prefs: UserPrefsRepository,
     private val recurring: RecurringRepository,
     private val alerts: BudgetAlerts,
+    private val splits: SplitRepository,
     private val clock: Clock,
 ) : ViewModel() {
     private val recordId: Long = handle.get<Long>(RouteArgs.RECORD_ID) ?: 0L
@@ -161,6 +177,8 @@ class RecordEditorViewModel @Inject constructor(
     private var allAccounts: List<Account> = emptyList()
     private var trees: Map<CategoryKind, List<Category>> = emptyMap()
     private var initialised = false
+    /** Editing a bill that was split when opened. */
+    private var wasSplit = false
 
     init {
         viewModelScope.launch {
@@ -211,10 +229,16 @@ class RecordEditorViewModel @Inject constructor(
         if (source != null) {
             if (mode == EditorMode.EDIT) source.recurringRuleId?.let(::watchLinkedRule)
             val at = LocalDateTime.ofInstant(source.occurredAt, clock.zone)
+            // A split bill opens with the whole bill as the amount and its split ready to edit.
+            val spec = if (source.isSplit) splits.splitOf(source.id) else null
+            if (mode == EditorMode.EDIT) wasSplit = spec != null
+            val locked = mode == EditorMode.EDIT && spec != null && splits.hasRepayments(source.id)
             _state.update {
                 it.copy(
                     kind = source.kind,
-                    amountText = Expression.toPlainText(BigDecimal(source.amount).movePointLeft(2)),
+                    split = spec?.let(SplitDraft::from),
+                    splitLocked = locked,
+                    amountText = Expression.toPlainText(BigDecimal(source.splitTotal ?: source.amount).movePointLeft(2)),
                     accountId = source.accountId,
                     toAccountId = source.toAccountId,
                     categoryId = source.categoryId,
@@ -339,7 +363,13 @@ class RecordEditorViewModel @Inject constructor(
     fun onDate(date: LocalDate) = _state.update { it.copy(date = date) }
     fun onTime(time: LocalTime) = _state.update { it.copy(time = time) }
     fun onNote(note: String) = _state.update { it.copy(note = note.take(200)) }
+    init {
+        viewModelScope.launch { splits.observePeople().collect { p -> _state.update { it.copy(people = p) } } }
+    }
+
     fun onRepeat(repeat: RepeatSpec?) = _state.update { it.copy(repeat = repeat) }
+
+    fun onSplit(split: SplitDraft?) = _state.update { it.copy(split = split, error = null) }
 
     fun save() {
         val s = _state.value
@@ -366,7 +396,15 @@ class RecordEditorViewModel @Inject constructor(
                 note = s.note,
             )
             runCatching {
+                val spec = s.splitSpec.takeIf { s.kind == RecordKind.EXPENSE }
                 when {
+                    // Paid back already: only the details change; amounts and split stay as they are.
+                    // Paid back already: only category, date and note change — on the bill and its parts.
+                    s.splitLocked -> splits.updateBillDetails(recordId, record.categoryId, record.occurredAt, record.note)
+                    spec != null -> {
+                        spec.problem?.let { error(it) }
+                        splits.saveSplit(record, spec)
+                    }
                     // Confirms the due occurrence (and moves the rule to its next date).
                     mode == EditorMode.RECURRING_DUE -> recurring.confirm(fromRuleId, record)
                     s.repeat != null && mode != EditorMode.EDIT -> {
@@ -377,6 +415,11 @@ class RecordEditorViewModel @Inject constructor(
                         )
                         val ruleId = recurring.save(s.repeat.toRule(template, s.date))
                         records.save(record.copy(recurringRuleId = ruleId))
+                    }
+                    // Was split, now "Don't split": its parts go and it's the whole bill again.
+                    mode == EditorMode.EDIT && wasSplit -> {
+                        splits.removeSplit(recordId)
+                        records.save(record)
                     }
                     else -> records.save(record)
                 }
@@ -397,8 +440,14 @@ class RecordEditorViewModel @Inject constructor(
         if (mode != EditorMode.EDIT) return
         viewModelScope.launch {
             val existing = records.get(recordId) ?: return@launch
+            // Money paid back for it is still waiting in SBI: deleting would break the balance.
+            splits.deleteBlockReason(recordId)?.let { reason ->
+                _events.send(RecordEditorEvent.CantDelete(reason))
+                return@launch
+            }
+            val spec = if (existing.isSplit && !splits.hasRepayments(recordId)) splits.splitOf(recordId) else null
             records.delete(recordId)
-            _events.send(RecordEditorEvent.Deleted(existing))
+            _events.send(RecordEditorEvent.Deleted(existing, spec, canUndo = !existing.isSplit || spec != null))
         }
     }
 }
@@ -410,3 +459,29 @@ private fun RecordKind.categoryKind(): CategoryKind? = when (this) {
 }
 
 private fun List<Category>.flatten(): List<Category> = flatMap { listOf(it) + it.children }
+
+/**
+ * The split being edited. Shares follow the bill equally until one is typed ([custom]); then the
+ * typed shares are kept (the editor shows whether they still add up).
+ */
+data class SplitDraft(
+    /** Others' names (null = unnamed); its size + 1 (you) = people. */
+    val names: List<String?>,
+    /** Typed shares: yours first, then each other person; null = equal split. */
+    val custom: List<Long>? = null,
+) {
+    val people: Int get() = names.size + 1
+
+    fun toSpec(total: Long): SplitSpec {
+        val shares = custom?.takeIf { it.size == people } ?: Split.equalShares(total, people)
+        return SplitSpec(total, shares.first(), shares.drop(1).mapIndexed { i, a -> SplitPart(names[i], a) })
+    }
+
+    companion object {
+        fun from(spec: SplitSpec): SplitDraft {
+            val shares = listOf(spec.myShare) + spec.parts.map { it.amount }
+            val equal = shares.size >= 2 && shares == Split.equalShares(spec.total, shares.size)
+            return SplitDraft(names = spec.parts.map { it.person }, custom = if (equal) null else shares)
+        }
+    }
+}

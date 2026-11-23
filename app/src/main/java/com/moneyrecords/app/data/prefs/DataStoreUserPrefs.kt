@@ -54,6 +54,7 @@ class DataStoreUserPrefs @Inject constructor(
     private val calcX = floatPreferencesKey("calc_x")
     private val calcY = floatPreferencesKey("calc_y")
     private val themeKey = stringPreferencesKey("theme")
+    private val repaymentAccount = longPreferencesKey("repayment_account")
     private val bAuto = booleanPreferencesKey("backup_auto")
     private val bFolder = stringPreferencesKey("backup_folder_uri")
     private val bFolderName = stringPreferencesKey("backup_folder_name")
@@ -148,6 +149,12 @@ class DataStoreUserPrefs @Inject constructor(
             it[lockRelock] = next.relockAfterSeconds.coerceAtLeast(0)
             it[lockHideRecents] = next.hideInRecents
         }
+    }
+
+    override fun observeRepaymentAccount(): Flow<Long?> = store.data.map { it[repaymentAccount] }
+
+    override suspend fun setRepaymentAccount(id: Long) {
+        store.edit { it[repaymentAccount] = id }
     }
 
     override fun observeTheme(): Flow<String> = store.data.map { it[themeKey] ?: "NOTHING" }

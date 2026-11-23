@@ -105,7 +105,7 @@ import java.util.Locale
 @Composable
 fun RecordEditorScreen(
     onClose: () -> Unit,
-    onDeleted: (Record) -> Unit,
+    onDeleted: (Record, com.moneyrecords.app.domain.split.SplitSpec?, Boolean) -> Unit,
     onAddAccount: () -> Unit,
     onOpenRecurring: (Long) -> Unit,
     viewModel: RecordEditorViewModel = hiltViewModel(),
@@ -116,6 +116,8 @@ fun RecordEditorScreen(
     var pickTime by remember { mutableStateOf(false) }
     var pickCategory by remember { mutableStateOf(false) }
     var pickRepeat by remember { mutableStateOf(false) }
+    var pickSplit by remember { mutableStateOf(false) }
+    var cantDelete by remember { mutableStateOf<String?>(null) }
     val askNotificationPermission = rememberNotificationPermissionRequest()
     // While the system keyboard is up (typing a note) the keypad steps aside.
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -126,7 +128,12 @@ fun RecordEditorScreen(
         viewModel.events.collect { event ->
             when (event) {
                 RecordEditorEvent.Saved -> { haptics.confirm(); onClose() }
-                is RecordEditorEvent.Deleted -> { haptics.confirm(); onDeleted(event.record); onClose() }
+                is RecordEditorEvent.Deleted -> {
+                    haptics.confirm()
+                    onDeleted(event.record, if (event.canUndo) event.split else null, event.canUndo)
+                    onClose()
+                }
+                is RecordEditorEvent.CantDelete -> { haptics.reject(); cantDelete = event.reason }
             }
         }
     }
@@ -196,12 +203,20 @@ fun RecordEditorScreen(
             state.linkedRule?.let { linked ->
                 LinkedRepeatRow(linked, onOpen = { onOpenRecurring(linked.rule.id) })
             }
-            if (state.mode == EditorMode.NEW || state.mode == EditorMode.DUPLICATE) {
+            if ((state.mode == EditorMode.NEW || state.mode == EditorMode.DUPLICATE) && state.split == null) {
                 RepeatRow(
                     repeat = state.repeat,
                     recordDate = state.date,
                     onTick = { checked -> if (checked) pickRepeat = true else viewModel.onRepeat(null) },
                     onEdit = { pickRepeat = true },
+                )
+            }
+            // Paid for a group: split the bill (expenses only; not with Repeat).
+            if (state.kind == RecordKind.EXPENSE && state.repeat == null && state.mode != EditorMode.RECURRING_DUE) {
+                SplitRow(
+                    state = state,
+                    onTick = { checked -> if (checked) pickSplit = true else viewModel.onSplit(null) },
+                    onEdit = { pickSplit = true },
                 )
             }
 
@@ -264,6 +279,29 @@ fun RecordEditorScreen(
             onCombine = viewModel::combineCategories,
             onDismiss = { pickCategory = false },
         )
+    }
+    cantDelete?.let { reason ->
+        AlertDialog(
+            onDismissRequest = { cantDelete = null },
+            title = { Text("Can't delete yet") },
+            text = { Text(reason) },
+            confirmButton = { TextButton(onClick = { cantDelete = null }) { Text("OK") } },
+        )
+    }
+    if (pickSplit) {
+        val total = state.amountPaise
+        if (total == null || total <= 0) {
+            LaunchedEffect(Unit) { pickSplit = false }
+        } else {
+            SplitSheet(
+                total = total,
+                payerName = state.accounts.firstOrNull { it.id == state.accountId }?.name,
+                current = state.split,
+                people = state.people,
+                onDone = viewModel::onSplit,
+                onDismiss = { pickSplit = false },
+            )
+        }
     }
     if (pickRepeat) {
         RepeatSheet(current = state.repeat, start = state.date, onDone = viewModel::onRepeat, onDismiss = { pickRepeat = false })
@@ -429,6 +467,71 @@ private fun RepeatRow(repeat: RepeatSpec?, recordDate: LocalDate, onTick: (Boole
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = Space.sm).size(20.dp),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * "☐ Split" — the bill was paid for a group. Ticking opens the split; once set it reads
+ * "Split · ₹150 to collect". After a repayment it's locked and just says what's left.
+ */
+@Composable
+private fun SplitRow(state: RecordEditorState, onTick: (Boolean) -> Unit, onEdit: () -> Unit) {
+    val haptics = rememberHaptics()
+    val spec = state.splitSpec
+    if (state.splitLocked) {
+        Text(
+            "Split bill · some of it has been paid back, so the amount and split can't change.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = Space.xs),
+        )
+        return
+    }
+    val canSplit = (state.amountPaise ?: 0) > 0
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier
+                .clip(MaterialTheme.shapes.medium)
+                .toggleable(
+                    value = state.split != null,
+                    enabled = canSplit || state.split != null,
+                    role = Role.Checkbox,
+                    onValueChange = { haptics.toggle(it); onTick(it) },
+                )
+                .heightIn(min = 48.dp)
+                .padding(end = Space.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = state.split != null, onCheckedChange = null, enabled = canSplit || state.split != null)
+            Text("Split", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = Space.xs))
+        }
+        val detail = when {
+            spec == null && !canSplit -> "Enter the amount first"
+            spec == null -> "Paid for friends too?"
+            spec.problem != null -> "Shares don't add up — tap to fix"
+            else -> "${Money.format(spec.myShare)} yours · ${Money.format(spec.toCollect)} to collect"
+        }
+        Row(
+            Modifier
+                .weight(1f)
+                .clip(MaterialTheme.shapes.medium)
+                .then(if (spec != null) Modifier.clickable(onClickLabel = "Edit split", role = Role.Button, onClick = onEdit) else Modifier)
+                .heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (spec?.problem != null) MrTheme.colors.danger else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (spec != null) {
+                Icon(Icons.Outlined.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = Space.sm).size(20.dp))
             }
         }
     }

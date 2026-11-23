@@ -16,6 +16,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.mutableIntStateOf
 import com.moneyrecords.app.ui.feature.settings.AppearanceScreen
+import com.moneyrecords.app.ui.feature.collect.ToCollectScreen
 import com.moneyrecords.app.ui.feature.settings.BackupScreen
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
@@ -30,6 +31,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarDuration
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
@@ -209,12 +211,20 @@ fun MoneyRecordsRoot(
                 popExitTransition = { ExitTransition.None },
             ) {
                 val openSettings = { navController.navigate(SettingsRoute) { launchSingleTop = true } }
+                val showUndo: (String, () -> Unit) -> Unit = { message, undo ->
+                    scope.launch {
+                        val result = snackbar.showSnackbar(message, actionLabel = "Undo", withDismissAction = true, duration = SnackbarDuration.Long)
+                        if (result == SnackbarResult.ActionPerformed) undo()
+                    }
+                }
                 val openRecord: (Long) -> Unit = { id -> navController.navigate(RecordEditorRoute(recordId = id)) }
                 val duplicateRecord: (Long) -> Unit = { id -> navController.navigate(RecordEditorRoute(duplicateOf = id)) }
                 screen<HomeRoute> {
                     HomeScreen(
                         onOpenSettings = openSettings,
                         onOpenRecurring = { navController.navigate(RecurringRoute) },
+                        onOpenToCollect = { navController.navigate(ToCollectRoute) },
+                        onMoved = showUndo,
                         onSeeAllRecords = {
                             navController.navigate(RecordsRoute) {
                                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -234,12 +244,18 @@ fun MoneyRecordsRoot(
                     )
                 }
                 screen<RecordsRoute> {
-                    RecordsScreen(onOpenSettings = openSettings, onOpenRecord = openRecord, onDuplicateRecord = duplicateRecord)
+                    RecordsScreen(
+                        onOpenSettings = openSettings,
+                        onOpenRecord = openRecord,
+                        onDuplicateRecord = duplicateRecord,
+                        onOpenToCollect = { navController.navigate(ToCollectRoute) },
+                    )
                 }
                 val showMessage: (String) -> Unit = { message -> scope.launch { snackbar.showSnackbar(message) } }
                 screen<AccountsRoute> {
                     AccountsScreen(
                         onOpenSettings = openSettings,
+                        onOpenToCollect = { navController.navigate(ToCollectRoute) },
                         onAddAccount = { navController.navigate(AccountEditorRoute()) },
                         onOpenAccount = { id -> navController.navigate(AccountEditorRoute(accountId = id)) },
                     )
@@ -247,10 +263,14 @@ fun MoneyRecordsRoot(
                 screen<RecordEditorRoute> {
                     RecordEditorScreen(
                         onClose = { navController.popBackStack() },
-                        onDeleted = { record ->
+                        onDeleted = { record, split, canUndo ->
                             scope.launch {
-                                val result = snackbar.showSnackbar("Record deleted", actionLabel = "Undo", withDismissAction = true)
-                                if (result == SnackbarResult.ActionPerformed) appViewModel.restore(record)
+                                if (!canUndo) {
+                                    snackbar.showSnackbar("Bill deleted — part of it had been paid back, so it can't be undone")
+                                    return@launch
+                                }
+                                val result = snackbar.showSnackbar("Record deleted", actionLabel = "Undo", withDismissAction = true, duration = SnackbarDuration.Long)
+                                if (result == SnackbarResult.ActionPerformed) appViewModel.restore(record, split)
                             }
                         },
                         onAddAccount = { navController.navigate(AccountEditorRoute()) },
@@ -271,6 +291,13 @@ fun MoneyRecordsRoot(
                         onOpenAppLock = { navController.navigate(AppLockSettingsRoute) },
                         onOpenAppearance = { navController.navigate(AppearanceRoute) },
                         onOpenBackup = { navController.navigate(BackupRoute) },
+                    )
+                }
+                screen<ToCollectRoute> {
+                    ToCollectScreen(
+                        onBack = { navController.popBackStack() },
+                        onMoved = showUndo,
+                        onEditBill = { id -> navController.navigate(RecordEditorRoute(recordId = id)) },
                     )
                 }
                 screen<AppearanceRoute> { AppearanceScreen(onBack = { navController.popBackStack() }) }

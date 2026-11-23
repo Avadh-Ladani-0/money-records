@@ -189,10 +189,16 @@ class RoomRecordRepository @Inject constructor(
         }
     }
 
-    override suspend fun delete(id: Long) = dao.delete(id)
+    /** Deleting a split expense also removes its to-collect parts and their repayments. */
+    override suspend fun delete(id: Long) = db.withTransaction {
+        dao.deleteGrandchildren(id)
+        dao.deleteChildren(id)
+        dao.delete(id)
+    }
 
     private suspend fun validate(record: Record) {
-        require(record.amount > 0) { "Amount must be more than zero" }
+        // A split bill may leave your share at ₹0 (you paid entirely for someone else).
+        require(record.amount > 0 || (record.isSplit && record.amount == 0L)) { "Amount must be more than zero" }
         requireNotNull(db.accountDao().get(record.accountId)) { "Account not found" }
         when (record.kind) {
             RecordKind.TRANSFER -> {

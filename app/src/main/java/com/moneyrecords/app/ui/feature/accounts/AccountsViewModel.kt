@@ -43,6 +43,8 @@ data class AccountsState(
     /** Sum of balances below zero, as a positive figure (cards in debt). */
     val owed: Long = 0,
     val flows: Map<Long, AccountFlow> = emptyMap(),
+    /** Owed to you by friends (bills you split). */
+    val toCollect: Long = 0,
 )
 
 /** Per-account in/out for the given records: income and transfers in vs expenses and transfers out. */
@@ -67,6 +69,7 @@ fun accountFlows(records: List<RecordDetails>): Map<Long, AccountFlow> {
 class AccountsViewModel @Inject constructor(
     repository: AccountRepository,
     records: RecordRepository,
+    splits: com.moneyrecords.app.domain.repository.SplitRepository,
     clock: Clock,
 ) : ViewModel() {
     private val month = YearMonth.now(clock)
@@ -74,7 +77,8 @@ class AccountsViewModel @Inject constructor(
     val state: StateFlow<AccountsState> = combine(
         repository.observeAccounts(includeArchived = true),
         records.observeRecords(RecordFilter(range = MonthRange.of(month, clock.zone), limit = 5_000)),
-    ) { all, monthRecords ->
+        splits.observeOpen(),
+    ) { all, monthRecords, open ->
         val active = all.filterNot { it.archived }
         AccountsState(
             loading = false,
@@ -84,6 +88,7 @@ class AccountsViewModel @Inject constructor(
             assets = active.filter { it.balance > 0 }.sumOf { it.balance },
             owed = -active.filter { it.balance < 0 }.sumOf { it.balance },
             flows = accountFlows(monthRecords),
+            toCollect = open.sumOf { it.outstanding },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AccountsState())
 }

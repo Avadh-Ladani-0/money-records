@@ -136,6 +136,10 @@ private fun MonthSummary(s: WidgetSnapshot) {
             Figure("Out", amount(s.expense, s.masked), c.expense, c, GlanceModifier.defaultWeight())
             Figure("Net", amount(s.net, s.masked, Money.Sign.ALWAYS), if (s.net >= 0) c.positive else c.expense, c, GlanceModifier.defaultWeight())
         }
+        if (tall && s.toCollect > 0) {
+            Spacer(6.dp)
+            WText("${amount(s.toCollect, s.masked)} to collect", c.muted, 11.sp)
+        }
         val overall = s.overall
         if (tall && overall != null) {
             Spacer(10.dp)

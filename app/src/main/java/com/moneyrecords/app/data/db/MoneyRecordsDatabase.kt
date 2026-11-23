@@ -17,7 +17,7 @@ import com.moneyrecords.app.domain.model.CategoryKind
         BudgetEntity::class,
         BudgetOffsetEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class MoneyRecordsDatabase : RoomDatabase() {
@@ -125,5 +125,20 @@ class SeedCallback : RoomDatabase.Callback() {
                 },
             )
         }
+    }
+}
+
+/**
+ * v4: split payments. Accounts gain `system` (the hidden "To collect" account); records gain the
+ * split columns. All are plain added columns with defaults, so existing rows are untouched.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `accounts` ADD COLUMN `system` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `records` ADD COLUMN `splitOf` INTEGER")
+        db.execSQL("ALTER TABLE `records` ADD COLUMN `person` TEXT")
+        db.execSQL("ALTER TABLE `records` ADD COLUMN `awaitingMove` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `records` ADD COLUMN `splitTotal` INTEGER")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_records_splitOf` ON `records` (`splitOf`)")
     }
 }

@@ -19,6 +19,8 @@ import com.moneyrecords.app.domain.repository.BudgetRepository
 import com.moneyrecords.app.domain.repository.CategoryRepository
 import com.moneyrecords.app.domain.repository.RecordRepository
 import com.moneyrecords.app.domain.repository.RecurringRepository
+import com.moneyrecords.app.domain.repository.SplitRepository
+import com.moneyrecords.app.domain.split.AwaitingMove
 import com.moneyrecords.app.domain.time.MonthRange
 import com.moneyrecords.app.notify.BudgetAlerts
 import com.moneyrecords.app.notify.RecurringNotifier
@@ -53,6 +55,13 @@ data class HomeState(
     val upcoming: List<RecurringRuleDetails> = emptyList(),
     /** This month's biggest spending categories. */
     val topCategories: List<CategoryShare> = emptyList(),
+    /** What friends still owe you for this month's bills, and how many bills. */
+    val toCollect: Long = 0,
+    val toCollectBills: Int = 0,
+    /** Still owed from earlier months (kept as spending; can be collected any time). */
+    val toCollectEarlier: Long = 0,
+    /** Repayments waiting to go back to the account that paid. */
+    val awaiting: List<AwaitingMove> = emptyList(),
 )
 
 private data class MoneyParts(val accounts: List<Account>, val summary: MonthSummary, val overview: BudgetOverview)
@@ -66,10 +75,13 @@ class HomeViewModel @Inject constructor(
     private val recurring: RecurringRepository,
     private val alerts: BudgetAlerts,
     private val recurringNotifier: RecurringNotifier,
+    private val splits: SplitRepository,
     clock: Clock,
 ) : ViewModel() {
     private val month = YearMonth.now(clock)
     private val today = LocalDate.now(clock)
+    private val zone = clock.zone
+    private fun monthOf(millis: Long) = YearMonth.from(java.time.Instant.ofEpochMilli(millis).atZone(zone))
 
     private val money = combine(
         accounts.observeAccounts(),
@@ -82,12 +94,15 @@ class HomeViewModel @Inject constructor(
         categories.observeTree(CategoryKind.EXPENSE, includeArchived = true),
     ) { monthRecords, tree -> Insights.topCategories(monthRecords, tree) }
 
+    private val collect = combine(splits.observeOpen(), splits.observeAwaitingMove()) { open, awaiting -> open to awaiting }
+
     val state: StateFlow<HomeState> = combine(
         money,
         spending,
         recurring.observeDue(today),
         recurring.observeRules(),
-    ) { m, top, due, rules ->
+        collect,
+    ) { m, top, due, rules, (open, awaiting) ->
         val overall = m.overview.overall
         val others = m.overview.all.filter { it.budget.scope != BudgetScope.OVERALL }
         HomeState(
@@ -104,6 +119,10 @@ class HomeViewModel @Inject constructor(
             due = due.groupBy { it.details.rule.id }.map { it.value.first() },
             upcoming = Insights.upcoming(rules, today),
             topCategories = top,
+            toCollect = open.filter { !monthOf(it.occurredAtMillis).isBefore(month) }.sumOf { it.outstanding },
+            toCollectBills = open.filter { !monthOf(it.occurredAtMillis).isBefore(month) }.map { it.expenseId }.distinct().size,
+            toCollectEarlier = open.filter { monthOf(it.occurredAtMillis).isBefore(month) }.sumOf { it.outstanding },
+            awaiting = awaiting,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState(month = month))
 
@@ -112,6 +131,14 @@ class HomeViewModel @Inject constructor(
             runCatching { recurring.confirm(occurrence.details.rule.id) }
             recurringNotifier.cancelDue(occurrence.details.rule.id)
             alerts.checkAfterRecord(YearMonth.from(occurrence.date))
+        }
+    }
+
+    /** Moves collected repayments back to the account that paid; [onMoved] gets an undo. */
+    fun move(move: AwaitingMove, amount: Long, onMoved: (undo: () -> Unit) -> Unit) {
+        viewModelScope.launch {
+            val token = runCatching { splits.moveCollected(move.payerAccountId, move.heldInAccountId, amount) }.getOrNull() ?: return@launch
+            onMoved { viewModelScope.launch { splits.undoMove(token) } }
         }
     }
 

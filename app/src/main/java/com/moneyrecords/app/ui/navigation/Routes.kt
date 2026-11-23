@@ -31,6 +31,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object AppLockSettingsRoute
 @Serializable data object AppearanceRoute
 @Serializable data object BackupRoute
+@Serializable data object ToCollectRoute
 
 @Serializable data class AccountEditorRoute(val accountId: Long = 0)
 

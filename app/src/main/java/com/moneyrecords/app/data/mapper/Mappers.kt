@@ -52,13 +52,15 @@ fun List<CategoryEntity>.toTree(): List<Category> {
 fun RecordEntity.toDomain() = Record(
     id = id, kind = kind, amount = amount, accountId = accountId, toAccountId = toAccountId,
     categoryId = categoryId, occurredAt = Instant.ofEpochMilli(occurredAt), note = note,
-    recurringRuleId = recurringRuleId,
+    recurringRuleId = recurringRuleId, splitOf = splitOf, person = person, awaitingMove = awaitingMove,
+    splitTotal = splitTotal,
 )
 
 fun Record.toEntity(createdAt: Long, updatedAt: Long) = RecordEntity(
     id = id, kind = kind, amount = amount, accountId = accountId, toAccountId = toAccountId,
     categoryId = categoryId, occurredAt = occurredAt.toEpochMilli(), note = note.trim(),
     recurringRuleId = recurringRuleId, createdAt = createdAt, updatedAt = updatedAt,
+    splitOf = splitOf, person = person?.trim()?.ifBlank { null }, awaitingMove = awaitingMove, splitTotal = splitTotal,
 )
 
 fun RecordRow.toDomain() = RecordDetails(
@@ -67,6 +69,8 @@ fun RecordRow.toDomain() = RecordDetails(
     toAccountName = toAccountName,
     categoryName = categoryName,
     categoryIconKey = categoryIconKey,
+    splitOutstanding = splitOutstanding,
+    splitWaiting = splitWaiting,
 )
 
 fun RecurringRuleEntity.toDomain() = RecurringRule(

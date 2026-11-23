@@ -34,6 +34,7 @@ class WidgetUpdater @Inject constructor(
     private val records: RecordRepository,
     private val budgets: BudgetRepository,
     private val prefs: UserPrefsRepository,
+    private val splits: com.moneyrecords.app.domain.repository.SplitRepository,
     private val clock: Clock,
 ) {
     @OptIn(FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -54,6 +55,7 @@ class WidgetUpdater @Inject constructor(
                     prefs.observeTheme(),
                     prefs.observeAppLock(),
                 ) { a, s, b, t, l -> listOf(today, a, s, b, t, l.enabled) }
+                    .combine(splits.observeOpen()) { parts, open -> parts + open.sumOf { it.outstanding } }
             }
                 .debounce(1_000)
                 .collect { refreshAll() }

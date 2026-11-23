@@ -75,6 +75,10 @@ interface UserPrefsRepository {
     fun observeBackup(): Flow<BackupPrefs>
     suspend fun updateBackup(change: (BackupPrefs) -> BackupPrefs)
 
+    /** Where friends' repayments usually arrive (e.g. SBI); remembered from the last one. */
+    fun observeRepaymentAccount(): Flow<Long?>
+    suspend fun setRepaymentAccount(id: Long)
+
     fun observeCalculator(): Flow<CalculatorPrefs>
     suspend fun setCalculatorEnabled(enabled: Boolean)
     suspend fun setCalculatorPosition(x: Float, y: Float)

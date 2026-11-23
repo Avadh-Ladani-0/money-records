@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -98,6 +99,7 @@ fun AccountType.label(): String = when (this) {
     AccountType.BANK -> "Bank"
     AccountType.CARD -> "Card"
     AccountType.WALLET -> "Wallet"
+    AccountType.UPI_LITE -> "UPI Lite"
     AccountType.OTHER -> "Other"
 }
 
@@ -106,6 +108,7 @@ fun AccountType.defaultIconKey(): String = when (this) {
     AccountType.BANK -> "bank"
     AccountType.CARD -> "card"
     AccountType.WALLET, AccountType.OTHER -> "wallet"
+    AccountType.UPI_LITE -> "lite"
 }
 
 data class AccountEditorState(
@@ -116,6 +119,15 @@ data class AccountEditorState(
     /** As typed; may start with "-" (e.g. a credit card that starts in debt). */
     val openingText: String = "",
     val archived: Boolean = false,
+    /** Last 4 digits of the bank account / card, to recognise its SMS alerts. */
+    val digits: String = "",
+    /** UPI Lite: the app it's enabled in and the bank account funding it. */
+    val liteApp: String? = null,
+    val fundingAccountId: Long? = null,
+    /** Bank accounts that can fund UPI Lite. */
+    val banks: List<Account> = emptyList(),
+    /** Another UPI Lite account exists (only one per phone). */
+    val otherLiteExists: Boolean = false,
     val error: String? = null,
 ) {
     val openingPaise: Long?
@@ -126,7 +138,9 @@ data class AccountEditorState(
             val value = Money.parse(text.removePrefix("-").removePrefix(Money.MINUS)) ?: return null
             return if (negative) -value else value
         }
-    val canSave: Boolean get() = name.isNotBlank() && openingPaise != null
+    val canSave: Boolean
+        get() = name.isNotBlank() && openingPaise != null &&
+            (type != AccountType.UPI_LITE || (liteApp != null && fundingAccountId != null))
 }
 
 sealed interface AccountEditorEvent {
@@ -147,6 +161,15 @@ class AccountEditorViewModel @Inject constructor(
     private var original: Account? = null
 
     init {
+        viewModelScope.launch {
+            val all = repository.observeAccounts().first()
+            _state.update { s ->
+                s.copy(
+                    banks = all.filter { it.type == AccountType.BANK && it.id != accountId },
+                    otherLiteExists = all.any { it.type == AccountType.UPI_LITE && it.id != accountId },
+                )
+            }
+        }
         if (accountId != 0L) viewModelScope.launch {
             val account = repository.get(accountId)
             original = account
@@ -159,6 +182,9 @@ class AccountEditorViewModel @Inject constructor(
                     openingText = if (account.openingBalance == 0L) "" else
                         (if (account.openingBalance < 0) "-" else "") + Money.format(account.openingBalance, symbol = "", sign = Money.Sign.NONE),
                     archived = account.archived,
+                    digits = account.digits.orEmpty(),
+                    liteApp = account.liteApp,
+                    fundingAccountId = account.fundingAccountId,
                 )
             }
         }
@@ -166,6 +192,9 @@ class AccountEditorViewModel @Inject constructor(
 
     fun onName(value: String) = _state.update { it.copy(name = value, error = null) }
     fun onType(value: AccountType) = _state.update { it.copy(type = value) }
+    fun onLiteApp(pkg: String) = _state.update { it.copy(liteApp = pkg) }
+    fun onFunding(id: Long) = _state.update { it.copy(fundingAccountId = id) }
+    fun onDigits(value: String) = _state.update { it.copy(digits = value.filter(Char::isDigit).take(4)) }
     fun onOpening(value: String) = _state.update { it.copy(openingText = value, error = null) }
 
     fun save() {
@@ -183,6 +212,9 @@ class AccountEditorViewModel @Inject constructor(
                         iconKey = original?.takeIf { it.type == s.type }?.iconKey ?: s.type.defaultIconKey(),
                         archived = s.archived,
                         sortOrder = original?.sortOrder ?: 0,
+                        digits = s.digits.ifBlank { null },
+                        liteApp = s.liteApp,
+                        fundingAccountId = s.fundingAccountId,
                     ),
                 )
             }.onSuccess { _events.send(AccountEditorEvent.Saved) }

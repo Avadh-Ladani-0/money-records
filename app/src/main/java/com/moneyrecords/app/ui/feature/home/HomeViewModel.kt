@@ -62,6 +62,8 @@ data class HomeState(
     val toCollectEarlier: Long = 0,
     /** Repayments waiting to go back to the account that paid. */
     val awaiting: List<AwaitingMove> = emptyList(),
+    /** Caught payments not recorded yet. */
+    val toRecord: Int = 0,
 )
 
 private data class MoneyParts(val accounts: List<Account>, val summary: MonthSummary, val overview: BudgetOverview)
@@ -76,6 +78,7 @@ class HomeViewModel @Inject constructor(
     private val alerts: BudgetAlerts,
     private val recurringNotifier: RecurringNotifier,
     private val splits: SplitRepository,
+    detection: com.moneyrecords.app.domain.detect.DetectionRepository,
     clock: Clock,
 ) : ViewModel() {
     private val month = YearMonth.now(clock)
@@ -94,7 +97,9 @@ class HomeViewModel @Inject constructor(
         categories.observeTree(CategoryKind.EXPENSE, includeArchived = true),
     ) { monthRecords, tree -> Insights.topCategories(monthRecords, tree) }
 
-    private val collect = combine(splits.observeOpen(), splits.observeAwaitingMove()) { open, awaiting -> open to awaiting }
+    private val collect = combine(splits.observeOpen(), splits.observeAwaitingMove(), detection.observeOpen()) { open, awaiting, caught ->
+        Triple(open, awaiting, caught.size)
+    }
 
     val state: StateFlow<HomeState> = combine(
         money,
@@ -102,7 +107,7 @@ class HomeViewModel @Inject constructor(
         recurring.observeDue(today),
         recurring.observeRules(),
         collect,
-    ) { m, top, due, rules, (open, awaiting) ->
+    ) { m, top, due, rules, (open, awaiting, caught) ->
         val overall = m.overview.overall
         val others = m.overview.all.filter { it.budget.scope != BudgetScope.OVERALL }
         HomeState(
@@ -123,6 +128,7 @@ class HomeViewModel @Inject constructor(
             toCollectBills = open.filter { !monthOf(it.occurredAtMillis).isBefore(month) }.map { it.expenseId }.distinct().size,
             toCollectEarlier = open.filter { monthOf(it.occurredAtMillis).isBefore(month) }.sumOf { it.outstanding },
             awaiting = awaiting,
+            toRecord = caught,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState(month = month))
 

@@ -32,6 +32,16 @@ object Notifications {
     const val CHANNEL_RECURRING = "recurring"
     const val CHANNEL_REMINDERS = "reminders"
     const val CHANNEL_BACKUP = "backup"
+    const val CHANNEL_DETECTED = "detected"
+    const val ACTION_ADD_DETECTED = "com.moneyrecords.app.action.ADD_DETECTED"
+    const val ACTION_OPEN_TO_RECORD = "com.moneyrecords.app.action.OPEN_TO_RECORD"
+    const val ACTION_OPEN_AUTO_DETECT = "com.moneyrecords.app.action.OPEN_AUTO_DETECT"
+    const val ACTION_DETECTED_LATER = "com.moneyrecords.app.action.DETECTED_LATER"
+    const val ACTION_DETECTED_IGNORE = "com.moneyrecords.app.action.DETECTED_IGNORE"
+    const val ACTION_DETECTED_REPAID = "com.moneyrecords.app.action.DETECTED_REPAID"
+    const val EXTRA_DETECTED_ID = "detectedId"
+    fun detectedId(id: Long) = 500_000 + id.toInt()
+    const val TO_RECORD_SUMMARY_ID = 5001
     const val ACTION_OPEN_BACKUP = "com.moneyrecords.app.action.OPEN_BACKUP"
 
     // Activity actions (handled by MainActivity).
@@ -65,15 +75,18 @@ object Notifications {
                 .apply { description = "A daily nudge to log your spending" },
             NotificationChannel(CHANNEL_BACKUP, "Backups", NotificationManager.IMPORTANCE_LOW)
                 .apply { description = "Problems with automatic backups" },
+            NotificationChannel(CHANNEL_DETECTED, "Payments to record", NotificationManager.IMPORTANCE_HIGH)
+                .apply { description = "Payments and credits caught from bank SMS, payment apps and pay widgets" },
         ).forEach { if (manager.getNotificationChannel(it.id) == null) manager.createNotificationChannel(it) }
     }
 
-    fun activityIntent(context: Context, action: String, requestCode: Int, ruleId: Long? = null): PendingIntent =
+    fun activityIntent(context: Context, action: String, requestCode: Int, ruleId: Long? = null, extraDetected: Long? = null): PendingIntent =
         PendingIntent.getActivity(
             context, requestCode,
             Intent(context, MainActivity::class.java)
                 .setAction(action)
                 .apply { if (ruleId != null) putExtra(EXTRA_RULE_ID, ruleId) }
+                .apply { if (extraDetected != null) putExtra(EXTRA_DETECTED_ID, extraDetected) }
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

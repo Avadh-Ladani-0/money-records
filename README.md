@@ -60,6 +60,18 @@ your accounts, set monthly budgets, and keep everything on your phone — no acc
   payment for several. When you move the money back to the account that paid, **Move** folds it in —
   the friend's part and the repayment disappear, as if it came straight back. Balances always match
   the bank; deleting a bill is blocked while its repayment is still waiting.
+- **Auto-detect payments** (Settings → Auto-detect, all on the phone): bank SMS (bank senders only) and
+  payment-app notifications (Google Pay, PhonePe, BHIM, bank apps) become **prompts** — "Paid ₹150 to
+  Raju · SBI — Add / Later / Ignore" — never silent records. One payment seen by both is one prompt; a
+  debit and credit between your accounts is a transfer; credits from someone who owes you offer
+  "Repaid by …". Adding opens the editor pre-filled (amount, account, payee, time, last category).
+  Apps and accounts are linked many-to-many; a bank SMS names the account, otherwise a small payment
+  from the app with UPI Lite is from UPI Lite.
+- **UPI Lite** as its own account type (which app, funded by which bank): top-up SMS become transfers,
+  small top-ups flag "paid with UPI Lite just now?", balance outside ₹0–₹5,000 is flagged.
+- **Scan & pay widgets** (1×1, one per app): open Google Pay / PhonePe straight on their QR scanner;
+  back in MoneyRecords afterwards to record it, with a reminder if you don't. Monochrome icons that
+  match themed (Nothing) icons, with a small MoneyRecords badge.
 - **Floating calculator**: a slim handle on the right edge of every screen with a Copy button; can be
   turned off in Settings.
 

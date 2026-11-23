@@ -14,6 +14,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.BaselineShift
 import com.moneyrecords.app.domain.money.Money
 import com.moneyrecords.app.ui.components.rememberHaptics
+import com.moneyrecords.app.ui.components.ChoiceChip
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import com.moneyrecords.app.domain.recurring.Recurrence
@@ -128,6 +129,7 @@ fun RecordEditorScreen(
         viewModel.events.collect { event ->
             when (event) {
                 RecordEditorEvent.Saved -> { haptics.confirm(); onClose() }
+                RecordEditorEvent.Closed -> onClose()
                 is RecordEditorEvent.Deleted -> {
                     haptics.confirm()
                     onDeleted(event.record, if (event.canUndo) event.split else null, event.canUndo)
@@ -140,15 +142,44 @@ fun RecordEditorScreen(
 
     Column(Modifier.fillMaxSize().imePadding()) {
         EditorTopBar(
-            title = when (state.mode) {
+            title = when {
+                state.fromDetected != null -> "Record this payment"
+                else -> when (state.mode) {
                 EditorMode.NEW -> "New record"
                 EditorMode.EDIT -> "Edit record"
                 EditorMode.DUPLICATE -> "Duplicate record"
                 EditorMode.RECURRING_DUE -> "Recurring record"
+                }
             },
             onClose = onClose,
             onDelete = if (state.mode == EditorMode.EDIT) ({ confirmDelete = true }) else null,
         )
+        // A caught payment: say where it came from; it can be put off or dismissed.
+        state.fromDetected?.let { d ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = Space.screen),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    when (d.source) {
+                        com.moneyrecords.app.domain.detect.DetectSource.PAY_WIDGET -> d.text
+                        com.moneyrecords.app.domain.detect.DetectSource.SMS -> "From a bank SMS"
+                        com.moneyrecords.app.domain.detect.DetectSource.NOTIFICATION ->
+                            "From ${com.moneyrecords.app.detect.PaymentApps.nameOf(d.origin) ?: "a payment app"}"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = viewModel::detectedLater) { Text("Later", color = MaterialTheme.colorScheme.onBackground) }
+                TextButton(onClick = viewModel::detectedIgnore) {
+                    Text(
+                        if (d.source == com.moneyrecords.app.domain.detect.DetectSource.PAY_WIDGET) "No payment made" else "Ignore",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
 
         // Details. Scrolls only if the screen is very short.
         val details: @Composable (Modifier) -> Unit = { mod ->
@@ -196,6 +227,14 @@ fun RecordEditorScreen(
                 }
             }
 
+            // Paid via an app: its accounts one tap away (UPI Lite first).
+            if (state.quickAccounts.size > 1 && state.kind != RecordKind.TRANSFER) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                    state.quickAccounts.mapNotNull { id -> state.accounts.firstOrNull { it.id == id } }.forEach { a ->
+                        ChoiceChip(a.name, selected = state.accountId == a.id, onClick = { viewModel.onAccount(a.id) })
+                    }
+                }
+            }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                 ValueChip(state.date.friendly(), Icons.Outlined.CalendarToday, onClick = { pickDate = true })
                 ValueChip(state.time.format(DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())), Icons.Outlined.Schedule, onClick = { pickTime = true })

@@ -4,7 +4,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 
-enum class AccountType { CASH, BANK, CARD, WALLET, OTHER }
+/** UPI_LITE: the on-device UPI Lite wallet — lives in one payment app, funded from one bank account. */
+enum class AccountType { CASH, BANK, CARD, WALLET, UPI_LITE, OTHER }
 
 enum class CategoryKind { INCOME, EXPENSE }
 
@@ -26,7 +27,24 @@ data class Account(
     val sortOrder: Int = 0,
     /** Paise; computed from opening balance and records, never stored. */
     val balance: Long = openingBalance,
-)
+    /** Last digits of the bank account / card, to recognise its SMS alerts. */
+    val digits: String? = null,
+    /** UPI Lite only: the payment app it's enabled in (package) and the bank account that funds it. */
+    val liteApp: String? = null,
+    val fundingAccountId: Long? = null,
+) {
+    val isUpiLite: Boolean get() = type == AccountType.UPI_LITE
+}
+
+/** UPI Lite rules (NPCI, 2025): small payments only, small balance. */
+object UpiLite {
+    /** Most a single UPI Lite payment can be (paise). */
+    const val MAX_PAYMENT = 1_000_00L
+    /** Most the wallet can hold (paise). */
+    const val MAX_BALANCE = 5_000_00L
+    /** A top-up smaller than this is usually "just enough to pay" — a payment happened right then. */
+    const val SHORTFALL_TOP_UP = 1_000_00L
+}
 
 data class Category(
     val id: Long = 0,

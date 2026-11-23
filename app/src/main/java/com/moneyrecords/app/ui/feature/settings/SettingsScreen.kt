@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.EventRepeat
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.CurrencyRupee
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
@@ -41,6 +42,7 @@ fun SettingsScreen(
     onOpenAppLock: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenBackup: () -> Unit,
+    onOpenAutoDetect: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val calculatorEnabled by viewModel.calculatorEnabled.collectAsStateWithLifecycle()
@@ -63,6 +65,9 @@ fun SettingsScreen(
         }
         item {
             ListRow(title = "Recurring", subtitle = "Rent, salary, subscriptions", icon = Icons.Outlined.EventRepeat, onClick = onOpenRecurring)
+        }
+        item {
+            ListRow(title = "Auto-detect payments", subtitle = "Bank SMS and payment apps → one-tap records", icon = Icons.Outlined.AutoAwesome, onClick = onOpenAutoDetect)
         }
         item {
             ListRow(title = "Notifications", subtitle = "Due items, reminders, budget alerts", icon = Icons.Outlined.Notifications, onClick = onOpenNotifications)

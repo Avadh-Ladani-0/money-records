@@ -6,4 +6,6 @@
     <string name="widget_month_summary_description">Balance and this month\'s in, out and budget</string>
     <string name="widget_budgets_name">Budgets</string>
     <string name="widget_budgets_description">Every budget and what\'s left this month</string>
+    <string name="widget_pay_name">Scan &amp; pay</string>
+    <string name="widget_pay_description">Open a payment app on its scanner, then record the payment</string>
 </resources>

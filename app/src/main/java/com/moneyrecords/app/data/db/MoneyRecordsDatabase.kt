@@ -16,8 +16,9 @@ import com.moneyrecords.app.domain.model.CategoryKind
         RecordEntity::class,
         BudgetEntity::class,
         BudgetOffsetEntity::class,
+        DetectedEntity::class,
     ],
-    version = 4,
+    version = 6,
     exportSchema = true,
 )
 abstract class MoneyRecordsDatabase : RoomDatabase() {
@@ -28,6 +29,7 @@ abstract class MoneyRecordsDatabase : RoomDatabase() {
     abstract fun budgetDao(): BudgetDao
     abstract fun budgetOffsetDao(): BudgetOffsetDao
     abstract fun backupDao(): BackupDao
+    abstract fun detectedDao(): DetectedDao
 
     companion object {
         const val NAME = "moneyrecords.db"
@@ -140,5 +142,33 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         db.execSQL("ALTER TABLE `records` ADD COLUMN `awaitingMove` INTEGER NOT NULL DEFAULT 0")
         db.execSQL("ALTER TABLE `records` ADD COLUMN `splitTotal` INTEGER")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_records_splitOf` ON `records` (`splitOf`)")
+    }
+}
+
+/**
+ * v5: catching payments. Accounts gain `digits` (to match bank SMS); new table `detected` holds
+ * alerts waiting to be added or ignored. Statements copied from schemas/5.json.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `accounts` ADD COLUMN `digits` TEXT")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `detected` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `source` TEXT NOT NULL, " +
+                "`origin` TEXT NOT NULL, `direction` TEXT NOT NULL, `amount` INTEGER NOT NULL, `accountId` INTEGER, `toAccountId` INTEGER, " +
+                "`accountDigits` TEXT, `counterparty` TEXT, `ref` TEXT, `upiLite` INTEGER NOT NULL DEFAULT 0, " +
+                "`occurredAt` INTEGER NOT NULL, `text` TEXT NOT NULL, `status` TEXT NOT NULL, `recordId` INTEGER, " +
+                "`createdAt` INTEGER NOT NULL)",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_detected_ref` ON `detected` (`ref`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_detected_occurredAt` ON `detected` (`occurredAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_detected_status` ON `detected` (`status`)")
+    }
+}
+
+/** v6: UPI Lite as its own account type — which app it's in and which bank funds it. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `accounts` ADD COLUMN `liteApp` TEXT")
+        db.execSQL("ALTER TABLE `accounts` ADD COLUMN `fundingAccountId` INTEGER")
     }
 }

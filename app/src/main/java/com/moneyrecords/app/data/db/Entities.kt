@@ -27,6 +27,11 @@ data class AccountEntity(
     val createdAt: Long,
     /** The hidden "To collect" account (money friends owe you); never listed (DB version 4). */
     @ColumnInfo(defaultValue = "0") val system: Boolean = false,
+    /** Last digits of the bank account / card, to match bank SMS ("A/c X1234") (DB version 5). */
+    val digits: String? = null,
+    /** UPI Lite: payment app (package) it's enabled in, and the bank account funding it (DB version 6). */
+    val liteApp: String? = null,
+    val fundingAccountId: Long? = null,
 )
 
 @Entity(
@@ -201,3 +206,34 @@ data class OpenPartRow(
 )
 
 data class AwaitingMoveRow(val payerId: Long, val payerName: String, val heldIn: Long, val heldInName: String, val total: Long, val count: Int)
+
+/**
+ * A payment or credit caught from a bank SMS, a payment-app notification or a pay widget, waiting
+ * for the user to add or ignore it (DB version 5). Never recorded on its own.
+ */
+@Entity(tableName = "detected", indices = [Index("ref"), Index("occurredAt"), Index("status")])
+data class DetectedEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** SMS | NOTIFICATION | PAY_WIDGET */
+    val source: String,
+    /** SMS sender ("AD-SBIUPI") or app package. */
+    val origin: String,
+    /** OUT | IN */
+    val direction: String,
+    /** Paise; 0 when not known yet (a pay-widget payment before its alert arrives). */
+    val amount: Long,
+    val accountId: Long? = null,
+    /** Set when this is money moving between two of your accounts (a transfer). */
+    val toAccountId: Long? = null,
+    val accountDigits: String? = null,
+    val counterparty: String? = null,
+    val ref: String? = null,
+    @ColumnInfo(defaultValue = "0") val upiLite: Boolean = false,
+    val occurredAt: Long,
+    /** The alert's text, shortened — shown to explain where it came from. */
+    val text: String = "",
+    /** NEW | LATER | ADDED | IGNORED */
+    val status: String = "NEW",
+    val recordId: Long? = null,
+    val createdAt: Long,
+)

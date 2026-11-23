@@ -220,3 +220,17 @@ class FakeSplits : com.moneyrecords.app.domain.repository.SplitRepository {
     override suspend fun deleteBlockReason(recordId: Long) = blockReason
     override fun observePeople() = kotlinx.coroutines.flow.flowOf(emptyList<String>())
 }
+
+class FakeDetection : com.moneyrecords.app.domain.detect.DetectionRepository, com.moneyrecords.app.domain.detect.DetectedPrompts {
+    val items = MutableStateFlow<List<com.moneyrecords.app.domain.detect.Detected>>(emptyList())
+    override suspend fun get(id: Long) = items.value.firstOrNull { it.id == id }
+    override fun observeOpen() = items
+    override suspend fun setStatus(id: Long, status: com.moneyrecords.app.domain.detect.DetectStatus, recordId: Long?) =
+        items.update { list -> list.map { if (it.id == id) it.copy(status = status, recordId = recordId) else it } }
+    override suspend fun categoryFor(counterparty: String?, direction: com.moneyrecords.app.domain.detect.Direction): Long? = null
+    override suspend fun accountsFor(origin: String): List<Long> = emptyList()
+    override suspend fun guessAccount(d: com.moneyrecords.app.domain.detect.Detected): Long? = d.accountId
+    override suspend fun refresh(id: Long) = get(id)
+    override fun cancel(id: Long) {}
+    override suspend fun refreshSummary(alert: Boolean) {}
+}

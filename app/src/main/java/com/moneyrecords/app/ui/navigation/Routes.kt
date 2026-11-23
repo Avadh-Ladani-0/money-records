@@ -23,6 +23,8 @@ import kotlinx.serialization.Serializable
     val duplicateOf: Long = 0,
     val fromRuleId: Long = 0,
     val kind: String = "",
+    /** > 0: a caught payment (bank SMS / payment app / pay widget) to record. */
+    val detectedId: Long = 0,
 )
 
 @Serializable data object RecurringRoute
@@ -32,6 +34,8 @@ import kotlinx.serialization.Serializable
 @Serializable data object AppearanceRoute
 @Serializable data object BackupRoute
 @Serializable data object ToCollectRoute
+@Serializable data object ToRecordRoute
+@Serializable data object AutoDetectRoute
 
 @Serializable data class AccountEditorRoute(val accountId: Long = 0)
 
@@ -46,4 +50,5 @@ object RouteArgs {
     const val ACCOUNT_ID = "accountId"
     const val CATEGORY_ID = "categoryId"
     const val KIND = "kind"
+    const val DETECTED_ID = "detectedId"
 }

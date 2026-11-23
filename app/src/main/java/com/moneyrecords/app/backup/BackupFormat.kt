@@ -91,6 +91,9 @@ data class BackupSettings(
     val id: Long, val name: String, val type: String, val openingBalance: Long, val iconKey: String,
     val archived: Boolean, val sortOrder: Int, val createdAt: Long,
     val system: Boolean = false,
+    val digits: String? = null,
+    val liteApp: String? = null,
+    val fundingAccountId: Long? = null,
 )
 
 @Serializable data class CategoryRow(
@@ -123,8 +126,8 @@ data class BackupSettings(
 
 // ── Entity ↔ row ────────────────────────────────────────────────────────────────────────────────
 
-fun AccountEntity.toRow() = AccountRow(id, name, type.name, openingBalance, iconKey, archived, sortOrder, createdAt, system)
-fun AccountRow.toEntity() = AccountEntity(id, name, AccountType.valueOf(type), openingBalance, iconKey, archived, sortOrder, createdAt, system)
+fun AccountEntity.toRow() = AccountRow(id, name, type.name, openingBalance, iconKey, archived, sortOrder, createdAt, system, digits, liteApp, fundingAccountId)
+fun AccountRow.toEntity() = AccountEntity(id, name, AccountType.valueOf(type), openingBalance, iconKey, archived, sortOrder, createdAt, system, digits, liteApp, fundingAccountId)
 
 fun CategoryEntity.toRow() = CategoryRow(id, name, kind.name, parentId, iconKey, archived, sortOrder)
 fun CategoryRow.toEntity() = CategoryEntity(id, name, CategoryKind.valueOf(kind), parentId, iconKey, archived, sortOrder)

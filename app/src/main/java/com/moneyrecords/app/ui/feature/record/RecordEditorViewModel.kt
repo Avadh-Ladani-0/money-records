@@ -111,6 +111,10 @@ data class RecordEditorState(
     /** Something was already paid back, so the bill amount and split can't change. */
     val splitLocked: Boolean = false,
     val people: List<String> = emptyList(),
+    /** The caught payment being recorded, if any. */
+    val fromDetected: com.moneyrecords.app.domain.detect.Detected? = null,
+    /** Accounts its app can pay from (UPI Lite first) — shown as one-tap chips. */
+    val quickAccounts: List<Long> = emptyList(),
     val error: String? = null,
     val saving: Boolean = false,
 ) {
@@ -138,6 +142,8 @@ data class RecordEditorState(
 
 sealed interface RecordEditorEvent {
     data object Saved : RecordEditorEvent
+    /** Closed without saving (a caught payment put off or ignored). */
+    data object Closed : RecordEditorEvent
     /** [split] is set when a split bill was deleted, so Undo can bring the whole split back. */
     data class Deleted(val record: Record, val split: SplitSpec? = null, val canUndo: Boolean = true) : RecordEditorEvent
     /** Deleting was refused; [reason] says why (shown in a dialog). */
@@ -154,11 +160,15 @@ class RecordEditorViewModel @Inject constructor(
     private val recurring: RecurringRepository,
     private val alerts: BudgetAlerts,
     private val splits: SplitRepository,
+    private val detection: com.moneyrecords.app.domain.detect.DetectionRepository,
+    private val detectedNotifier: com.moneyrecords.app.domain.detect.DetectedPrompts,
     private val clock: Clock,
 ) : ViewModel() {
     private val recordId: Long = handle.get<Long>(RouteArgs.RECORD_ID) ?: 0L
     private val duplicateOf: Long = handle.get<Long>(RouteArgs.DUPLICATE_OF) ?: 0L
     private val fromRuleId: Long = handle.get<Long>(RouteArgs.FROM_RULE_ID) ?: 0L
+    /** A caught payment this record comes from (pre-fills it; marked added on save). */
+    private val detectedId: Long = handle.get<Long>(RouteArgs.DETECTED_ID) ?: 0L
     /** Type to start a new record with (from the Quick add widget); null = expense. */
     private val startKind: RecordKind? = handle.get<String>(RouteArgs.KIND)?.let { k -> RecordKind.entries.firstOrNull { it.name == k } }
     private val mode = when {
@@ -250,9 +260,59 @@ class RecordEditorViewModel @Inject constructor(
         } else {
             if (mode != EditorMode.NEW) _state.update { it.copy(error = "Record not found") }
             applyDefaults(startKind ?: RecordKind.EXPENSE)
+            if (detectedId > 0) prefillFromDetected()
         }
         loadRecents(_state.value.kind)
         _state.update { it.copy(loading = false) }
+    }
+
+    /** Fills the editor from a caught payment: type, amount, account(s), payee as note, time, category guess. */
+    private suspend fun prefillFromDetected() {
+        val d = detection.refresh(detectedId) ?: return
+        val kind = when {
+            d.isTransfer -> RecordKind.TRANSFER
+            d.direction == com.moneyrecords.app.domain.detect.Direction.OUT -> RecordKind.EXPENSE
+            else -> RecordKind.INCOME
+        }
+        if (kind != _state.value.kind) applyDefaults(kind)
+        val at = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(d.occurredAt), clock.zone)
+        val guess = detection.categoryFor(d.counterparty, d.direction)
+        val account = detection.guessAccount(d)
+        val quick = if (d.source == com.moneyrecords.app.domain.detect.DetectSource.SMS) emptyList() else detection.accountsFor(d.origin)
+        _state.update {
+            it.copy(
+                fromDetected = d,
+                quickAccounts = quick,
+                amountText = if (d.amount > 0) Expression.toPlainText(BigDecimal(d.amount).movePointLeft(2)) else it.amountText,
+                accountId = account ?: it.accountId,
+                toAccountId = if (kind == RecordKind.TRANSFER) d.toAccountId else it.toAccountId,
+                categoryId = guess ?: it.categoryId,
+                note = d.counterparty.orEmpty(),
+                date = at.toLocalDate(),
+                time = at.toLocalTime().withSecond(0).withNano(0),
+            )
+        }
+    }
+
+    /** "Later": keep it in To record (the ongoing reminder stays). */
+    fun detectedLater() {
+        if (detectedId == 0L) return
+        viewModelScope.launch {
+            detection.setStatus(detectedId, com.moneyrecords.app.domain.detect.DetectStatus.LATER)
+            detectedNotifier.refreshSummary()
+            _events.send(RecordEditorEvent.Closed)
+        }
+    }
+
+    /** "Ignore" / "No payment made": not a record. */
+    fun detectedIgnore() {
+        if (detectedId == 0L) return
+        viewModelScope.launch {
+            detection.setStatus(detectedId, com.moneyrecords.app.domain.detect.DetectStatus.IGNORED)
+            detectedNotifier.cancel(detectedId)
+            detectedNotifier.refreshSummary()
+            _events.send(RecordEditorEvent.Closed)
+        }
     }
 
     /** Shows the repeat this record came from, refreshing after it's edited elsewhere. */
@@ -397,10 +457,9 @@ class RecordEditorViewModel @Inject constructor(
             )
             runCatching {
                 val spec = s.splitSpec.takeIf { s.kind == RecordKind.EXPENSE }
-                when {
-                    // Paid back already: only the details change; amounts and split stay as they are.
+                val savedId: Long? = when {
                     // Paid back already: only category, date and note change — on the bill and its parts.
-                    s.splitLocked -> splits.updateBillDetails(recordId, record.categoryId, record.occurredAt, record.note)
+                    s.splitLocked -> { splits.updateBillDetails(recordId, record.categoryId, record.occurredAt, record.note); recordId }
                     spec != null -> {
                         spec.problem?.let { error(it) }
                         splits.saveSplit(record, spec)
@@ -424,6 +483,12 @@ class RecordEditorViewModel @Inject constructor(
                     else -> records.save(record)
                 }
                 alerts.checkAfterRecord(YearMonth.from(s.date))
+                // A caught payment is now recorded: it leaves To record and its prompt goes.
+                if (detectedId > 0) {
+                    detection.setStatus(detectedId, com.moneyrecords.app.domain.detect.DetectStatus.ADDED, savedId)
+                    detectedNotifier.cancel(detectedId)
+                    detectedNotifier.refreshSummary()
+                }
             }
                 .onSuccess {
                     prefs.rememberRecordDefaults(

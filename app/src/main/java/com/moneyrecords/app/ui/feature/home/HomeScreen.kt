@@ -71,6 +71,7 @@ fun HomeScreen(
     onOpenRecurring: () -> Unit,
     onOpenToCollect: () -> Unit,
     onMoved: (message: String, undo: () -> Unit) -> Unit,
+    onOpenToRecord: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -99,6 +100,20 @@ fun HomeScreen(
                 )
             }
             return@LazyColumn
+        }
+
+        // Caught payments waiting: first thing to deal with.
+        if (state.toRecord > 0) item(key = "to-record") {
+            Spacer(Modifier.height(Space.lg))
+            MrCard(onClick = onOpenToRecord, modifier = Modifier.animateItem(), contentPadding = PaddingValues(horizontal = Space.xl, vertical = Space.lg)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(if (state.toRecord == 1) "1 payment to record" else "${state.toRecord} payments to record", style = MaterialTheme.typography.titleMedium)
+                        Text("Caught from bank SMS, payment apps or a pay widget", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("Review", style = MaterialTheme.typography.labelLarge, color = MrTheme.colors.accent)
+                }
+            }
         }
 
         // Paid for friends: what's owed, and collected money waiting to go back to UPI Lite.

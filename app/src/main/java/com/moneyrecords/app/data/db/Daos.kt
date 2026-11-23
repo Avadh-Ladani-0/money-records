@@ -47,6 +47,9 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE system = 1 LIMIT 1")
     suspend fun systemAccount(): AccountEntity?
 
+    @Query("SELECT * FROM accounts WHERE type = 'UPI_LITE' AND archived = 0 LIMIT 1")
+    suspend fun liteAccount(): AccountEntity?
+
     @Query(
         """
         SELECT EXISTS(SELECT 1 FROM records WHERE accountId = :id OR toAccountId = :id)
@@ -287,6 +290,17 @@ interface RecordDao {
 
     @Query("UPDATE records SET amount = :amount WHERE id = :id")
     suspend fun setAmount(id: Long, amount: Long)
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM records WHERE kind = :kind AND amount = :amount
+          AND (accountId = :accountId OR toAccountId = :accountId) AND occurredAt BETWEEN :from AND :to
+        """,
+    )
+    suspend fun countSimilar(kind: String, amount: Long, accountId: Long, from: Long, to: Long): Int
+
+    @Query("SELECT categoryId FROM records WHERE note = :note COLLATE NOCASE AND kind = :kind AND categoryId IS NOT NULL ORDER BY occurredAt DESC LIMIT 1")
+    suspend fun lastCategoryForNote(note: String, kind: String): Long?
 }
 
 @Dao
@@ -421,4 +435,35 @@ interface BackupDao {
     @Insert suspend fun insertRecords(rows: List<RecordEntity>)
     @Insert suspend fun insertBudgets(rows: List<BudgetEntity>)
     @Insert suspend fun insertBudgetOffsets(rows: List<BudgetOffsetEntity>)
+}
+
+@Dao
+interface DetectedDao {
+    @Insert suspend fun insert(row: DetectedEntity): Long
+    @Update suspend fun update(row: DetectedEntity)
+    @Query("SELECT * FROM detected WHERE id = :id") suspend fun get(id: Long): DetectedEntity?
+
+    /** Items around [from]..[to] that a new alert might be the same payment as. */
+    @Query("SELECT * FROM detected WHERE occurredAt BETWEEN :from AND :to ORDER BY occurredAt")
+    suspend fun around(from: Long, to: Long): List<DetectedEntity>
+
+    @Query("SELECT * FROM detected WHERE ref = :ref LIMIT 1")
+    suspend fun byRef(ref: String): DetectedEntity?
+
+    /** Waiting for the user: new and "later" items, newest first. */
+    @Query("SELECT * FROM detected WHERE status IN ('NEW', 'LATER') ORDER BY occurredAt DESC")
+    fun observeOpen(): Flow<List<DetectedEntity>>
+
+    @Query("SELECT * FROM detected WHERE status IN ('NEW', 'LATER')")
+    suspend fun openNow(): List<DetectedEntity>
+
+    @Query("UPDATE detected SET status = :status, recordId = :recordId WHERE id = :id")
+    suspend fun setStatus(id: Long, status: String, recordId: Long?)
+
+    /** The last 50 items whatever their status — the detection log. */
+    @Query("SELECT * FROM detected ORDER BY createdAt DESC LIMIT 50")
+    fun observeLog(): Flow<List<DetectedEntity>>
+
+    @Query("DELETE FROM detected WHERE status IN ('ADDED', 'IGNORED') AND createdAt < :before")
+    suspend fun prune(before: Long)
 }

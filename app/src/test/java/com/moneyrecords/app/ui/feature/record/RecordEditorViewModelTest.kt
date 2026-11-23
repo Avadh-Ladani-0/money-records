@@ -50,6 +50,7 @@ class RecordEditorViewModelTest {
     @After fun tearDown() = Dispatchers.resetMain()
 
     private val splits = com.moneyrecords.app.testing.FakeSplits()
+    private val detection = com.moneyrecords.app.testing.FakeDetection()
 
     private fun vm(vararg args: Pair<String, Long>) = RecordEditorViewModel(
         SavedStateHandle(args.toMap()),
@@ -60,6 +61,8 @@ class RecordEditorViewModelTest {
         recurring,
         alerts,
         splits,
+        detection,
+        detection,
         clock,
     )
 

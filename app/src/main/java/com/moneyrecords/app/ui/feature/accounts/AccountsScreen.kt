@@ -156,9 +156,15 @@ private fun SummaryFigure(label: String, paise: Long, color: androidx.compose.ui
 @Composable
 private fun AccountRow(account: Account, flow: AccountFlow?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val monthLine = flow?.let { "In ${Money.format(it.inflow)} · Out ${Money.format(it.outflow)} this month" }
+    // UPI Lite holds ₹0–₹5,000: outside that, a record is missing (usually an auto top-up).
+    val liteLine = if (!account.isUpiLite) null else when {
+        account.balance < 0 -> "Below ₹0 — a top-up may be missing"
+        account.balance > com.moneyrecords.app.domain.model.UpiLite.MAX_BALANCE -> "Over the ₹5,000 UPI Lite limit — check its records"
+        else -> null
+    }
     ListRow(
         title = account.name,
-        subtitle = listOfNotNull(account.type.label(), "Archived".takeIf { account.archived }, monthLine).joinToString(" · "),
+        subtitle = listOfNotNull(account.type.label(), "Archived".takeIf { account.archived }, liteLine, monthLine).joinToString(" · "),
         subtitleLines = 2,
         icon = AppIcons.forKey(account.iconKey),
         onClick = onClick,

@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.BusinessCenter
 import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.Category
@@ -56,9 +57,10 @@ object AppIcons {
         "bank" to Icons.Outlined.AccountBalance,
         "card" to Icons.Outlined.CreditCard,
         "wallet" to Icons.Outlined.AccountBalanceWallet,
+        "lite" to Icons.Outlined.Bolt,
     )
 
-    val accountKeys: List<String> = listOf("cash", "bank", "card", "wallet")
+    val accountKeys: List<String> = listOf("cash", "bank", "card", "wallet", "lite")
     val categoryKeys: List<String> = byKey.keys.filterNot { it in accountKeys }
 
     private val labels = mapOf(
@@ -67,7 +69,7 @@ object AppIcons {
         "education" to "School", "entertainment" to "Film", "travel" to "Plane", "personal" to "Spa",
         "gift" to "Gift", "other" to "Shapes", "salary" to "Briefcase", "business" to "Business",
         "interest" to "Piggy bank", "refund" to "Refund", "cash" to "Cash", "bank" to "Bank",
-        "card" to "Card", "wallet" to "Wallet",
+        "card" to "Card", "wallet" to "Wallet", "lite" to "UPI Lite",
     )
 
     /** Spoken name of an icon, for screen readers ("Piggy bank", not "interest"). */

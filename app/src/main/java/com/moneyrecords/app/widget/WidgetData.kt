@@ -91,6 +91,13 @@ data class WidgetSnapshot(
             )
         }
 
+        /** Just the theme (for widgets that show no money). */
+        suspend fun themeOnly(context: Context): AppTheme {
+            val e = EntryPointAccessors.fromApplication(context.applicationContext, WidgetEntryPoint::class.java)
+            val key = e.prefs().observeTheme().first()
+            return AppTheme.entries.firstOrNull { it.name == key } ?: AppTheme.NOTHING
+        }
+
         private fun BudgetProgress.toWidget() = WidgetBudget(
             name = when (budget.scope) {
                 BudgetScope.OVERALL -> "Overall"

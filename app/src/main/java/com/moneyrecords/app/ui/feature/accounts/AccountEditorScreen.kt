@@ -81,7 +81,7 @@ fun AccountEditorScreen(
 
             SectionLabel("Type")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-                AccountType.entries.forEach { type ->
+                AccountType.entries.filter { it != AccountType.UPI_LITE || !state.otherLiteExists || state.type == it }.forEach { type ->
                     ChoiceChip(
                         text = type.label(),
                         selected = state.type == type,
@@ -100,6 +100,20 @@ fun AccountEditorScreen(
                 isError = state.openingPaise == null,
                 supportingText = "What this account held before you started tracking. Use − for a card that starts in debt.",
             )
+
+            if (state.type == AccountType.UPI_LITE) {
+                LiteSection(state, viewModel)
+            }
+
+            if (state.type == AccountType.BANK || state.type == AccountType.CARD) {
+                MrTextField(
+                    value = state.digits,
+                    onValueChange = viewModel::onDigits,
+                    label = "Last 4 digits (optional)",
+                    keyboardType = KeyboardType.Number,
+                    supportingText = "Lets MoneyRecords recognise this account in bank SMS, like \"A/c X1234\".",
+                )
+            }
 
             if (!state.isNew) {
                 GhostButton(
@@ -135,4 +149,33 @@ fun AccountEditorScreen(
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
+}
+
+/**
+ * UPI Lite: a small on-device wallet inside one payment app, topped up from one bank account.
+ * Knowing both lets MoneyRecords turn "UPI LITE Top-up on SBI" SMS into transfers and recognise
+ * Lite payments (they never send an SMS).
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun LiteSection(state: AccountEditorState, viewModel: AccountEditorViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val apps = androidx.compose.runtime.remember { com.moneyrecords.app.detect.PaymentApps.installed(context) }
+    SectionLabel("Enabled in")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+        apps.forEach { app -> ChoiceChip(app.name, selected = state.liteApp == app.pkg, onClick = { viewModel.onLiteApp(app.pkg) }) }
+    }
+    SectionLabel("Funded by")
+    if (state.banks.isEmpty()) {
+        Text("Add your bank account first (type Bank).", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        com.moneyrecords.app.ui.components.AccountDropdown("Bank account", state.banks, state.fundingAccountId, viewModel::onFunding, Modifier.fillMaxWidth())
+    }
+    Text(
+        "UPI Lite takes payments up to ₹1,000 and holds up to ₹5,000. Paying from it sends no SMS — MoneyRecords " +
+            "catches those payments from the app's notification or the Scan & pay widget. A top-up SMS from the bank " +
+            "becomes a transfer into this account. Only one UPI app can have UPI Lite at a time.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }

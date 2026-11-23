@@ -67,6 +67,7 @@ class WidgetUpdater @Inject constructor(
             QuickAddWidget().updateAll(context)
             MonthSummaryWidget().updateAll(context)
             BudgetsWidget().updateAll(context)
+            PayWidget().updateAll(context)
         }
     }
 }

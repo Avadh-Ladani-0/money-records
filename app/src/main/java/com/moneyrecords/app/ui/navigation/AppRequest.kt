@@ -5,6 +5,10 @@ sealed interface AppRequest {
     data object OpenBudgets : AppRequest
     data object OpenHome : AppRequest
     data object OpenBackup : AppRequest
+    data object OpenToRecord : AppRequest
+    data object OpenAutoDetect : AppRequest
+    /** Record a caught payment. */
+    data class AddDetected(val id: Long) : AppRequest
     /** [kind] is a RecordKind name, or null for the usual default. */
     data class AddRecord(val kind: String? = null) : AppRequest
     /** Open the record editor pre-filled from a due recurring item. */

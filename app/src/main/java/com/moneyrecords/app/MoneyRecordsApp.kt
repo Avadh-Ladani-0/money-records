@@ -28,6 +28,7 @@ class MoneyRecordsApp : Application(), Configuration.Provider {
     @Inject lateinit var prefs: UserPrefsRepository
     @Inject lateinit var appLock: AppLockManager
     @Inject lateinit var widgets: WidgetUpdater
+    @Inject lateinit var detected: com.moneyrecords.app.data.repository.RoomDetectionRepository
 
     override fun onCreate() {
         super.onCreate()
@@ -39,6 +40,8 @@ class MoneyRecordsApp : Application(), Configuration.Provider {
         ProcessLifecycleOwner.get().lifecycleScope.launch {
             val n = prefs.notifications()
             if (n.dailyReminder) DailyReminderWorker.schedule(this@MoneyRecordsApp, n.reminderHour, n.reminderMinute)
+            // Caught items waiting since before a rule existed (e.g. UPI Lite set up later) are fixed up.
+            runCatching { detected.refreshOpen() }
             val b = prefs.observeBackup().first()
             if (b.autoEnabled && b.folderUri != null) AutoBackupWorker.schedule(this@MoneyRecordsApp)
         }

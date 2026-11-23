@@ -3,6 +3,27 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Auto-detect (off until the user turns it on): bank transaction SMS. -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <!-- Pay widgets: find installed UPI apps and open them. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
+        </intent>
+        <package android:name="com.google.android.apps.nbu.paisa.user" />
+        <package android:name="com.phonepe.app" />
+        <package android:name="net.one97.paytm" />
+        <package android:name="in.org.npci.upiapp" />
+        <package android:name="in.amazon.mShop.android.shopping" />
+        <package android:name="com.dreamplug.androidapp" />
+        <package android:name="com.mobikwik_new" />
+        <package android:name="com.sbi.lotusintouch" />
+        <package android:name="com.sbi.upi" />
+        <package android:name="com.bankofbaroda.mconnect" />
+        <package android:name="com.bankofbaroda.upi" />
+    </queries>
 
     <application
         android:name=".MoneyRecordsApp"
@@ -32,6 +53,57 @@
         <receiver
             android:name=".notify.NotificationActionReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".notify.DetectedActionReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".detect.SmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".detect.PaymentNotificationListener"
+            android:exported="true"
+            android:label="MoneyRecords payment detection"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name=".widget.PayLaunchActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <activity
+            android:name=".widget.PayWidgetConfigActivity"
+            android:exported="true"
+            android:theme="@style/Theme.MoneyRecords">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".widget.PayWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_pay_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_pay_info" />
+        </receiver>
 
         <receiver
             android:name=".widget.QuickAddWidgetReceiver"

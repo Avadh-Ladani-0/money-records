@@ -23,12 +23,16 @@ fun AccountWithBalance.toDomain(): Account = account.toDomain(balance)
 
 fun AccountEntity.toDomain(balance: Long = openingBalance) = Account(
     id = id, name = name, type = type, openingBalance = openingBalance, iconKey = iconKey,
-    archived = archived, sortOrder = sortOrder, balance = balance,
+    archived = archived, sortOrder = sortOrder, balance = balance, digits = digits,
+    liteApp = liteApp, fundingAccountId = fundingAccountId,
 )
 
 fun Account.toEntity(createdAt: Long) = AccountEntity(
     id = id, name = name.trim(), type = type, openingBalance = openingBalance, iconKey = iconKey,
     archived = archived, sortOrder = sortOrder, createdAt = createdAt,
+    digits = digits?.filter { it.isDigit() }?.takeLast(4)?.ifBlank { null },
+    liteApp = liteApp.takeIf { type == com.moneyrecords.app.domain.model.AccountType.UPI_LITE },
+    fundingAccountId = fundingAccountId.takeIf { type == com.moneyrecords.app.domain.model.AccountType.UPI_LITE },
 )
 
 fun CategoryEntity.toDomain() = Category(

@@ -82,6 +82,15 @@ class MainActivity : FragmentActivity() {
                 requests.trySend(AppRequest.AddRecord(intent.getStringExtra(Notifications.EXTRA_KIND)))
             Notifications.ACTION_OPEN_HOME -> requests.trySend(AppRequest.OpenHome)
             Notifications.ACTION_OPEN_BACKUP -> requests.trySend(AppRequest.OpenBackup)
+            Notifications.ACTION_OPEN_TO_RECORD -> requests.trySend(AppRequest.OpenToRecord)
+            Notifications.ACTION_OPEN_AUTO_DETECT -> requests.trySend(AppRequest.OpenAutoDetect)
+            Notifications.ACTION_ADD_DETECTED -> {
+                val id = intent.getLongExtra(Notifications.EXTRA_DETECTED_ID, 0L)
+                if (id > 0) {
+                    Notifications.cancel(this, Notifications.detectedId(id))
+                    requests.trySend(AppRequest.AddDetected(id))
+                }
+            }
             Notifications.ACTION_EDIT_DUE -> {
                 val ruleId = intent.getLongExtra(Notifications.EXTRA_RULE_ID, 0L)
                 if (ruleId > 0) {

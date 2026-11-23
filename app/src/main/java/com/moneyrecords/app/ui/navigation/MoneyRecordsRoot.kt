@@ -17,6 +17,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.mutableIntStateOf
 import com.moneyrecords.app.ui.feature.settings.AppearanceScreen
 import com.moneyrecords.app.ui.feature.collect.ToCollectScreen
+import com.moneyrecords.app.ui.feature.detect.ToRecordScreen
+import com.moneyrecords.app.ui.feature.detect.AutoDetectScreen
 import com.moneyrecords.app.ui.feature.settings.BackupScreen
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
@@ -145,6 +147,9 @@ fun MoneyRecordsRoot(
                 }
                 is AppRequest.AddRecord -> navController.navigate(RecordEditorRoute(kind = request.kind.orEmpty()))
                 AppRequest.OpenBackup -> navController.navigate(BackupRoute) { launchSingleTop = true }
+                AppRequest.OpenToRecord -> navController.navigate(ToRecordRoute) { launchSingleTop = true }
+                AppRequest.OpenAutoDetect -> navController.navigate(AutoDetectRoute) { launchSingleTop = true }
+                is AppRequest.AddDetected -> navController.navigate(RecordEditorRoute(detectedId = request.id))
                 AppRequest.OpenHome -> navController.navigate(HomeRoute) {
                     popUpTo(navController.graph.findStartDestination().id) { inclusive = false }
                     launchSingleTop = true
@@ -225,6 +230,7 @@ fun MoneyRecordsRoot(
                         onOpenRecurring = { navController.navigate(RecurringRoute) },
                         onOpenToCollect = { navController.navigate(ToCollectRoute) },
                         onMoved = showUndo,
+                        onOpenToRecord = { navController.navigate(ToRecordRoute) },
                         onSeeAllRecords = {
                             navController.navigate(RecordsRoute) {
                                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -291,6 +297,7 @@ fun MoneyRecordsRoot(
                         onOpenAppLock = { navController.navigate(AppLockSettingsRoute) },
                         onOpenAppearance = { navController.navigate(AppearanceRoute) },
                         onOpenBackup = { navController.navigate(BackupRoute) },
+                        onOpenAutoDetect = { navController.navigate(AutoDetectRoute) },
                     )
                 }
                 screen<ToCollectRoute> {
@@ -300,6 +307,13 @@ fun MoneyRecordsRoot(
                         onEditBill = { id -> navController.navigate(RecordEditorRoute(recordId = id)) },
                     )
                 }
+                screen<ToRecordRoute> {
+                    ToRecordScreen(
+                        onBack = { navController.popBackStack() },
+                        onAdd = { id -> navController.navigate(RecordEditorRoute(detectedId = id)) },
+                    )
+                }
+                screen<AutoDetectRoute> { AutoDetectScreen(onBack = { navController.popBackStack() }, onMessage = showMessage) }
                 screen<AppearanceRoute> { AppearanceScreen(onBack = { navController.popBackStack() }) }
                 screen<BackupRoute> { BackupScreen(onBack = { navController.popBackStack() }, onMessage = showMessage) }
                 screen<CategoriesRoute> {

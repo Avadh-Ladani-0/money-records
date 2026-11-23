@@ -125,6 +125,17 @@ class SplitRepositoryTest {
         assertEquals(1_500_00L + 250_00L, balance(lite))
     }
 
+    @Test fun migrationFrom4To5AddsDetectedAndDigits() {
+        val name = "migration-test-5"
+        migrationHelper.createDatabase(name, 4).apply {
+            execSQL("INSERT INTO accounts (id, name, type, openingBalance, iconKey, archived, sortOrder, createdAt, system) VALUES (1, 'SBI', 'BANK', 0, 'bank', 0, 0, 0, 0)")
+            close()
+        }
+        val migrated = migrationHelper.runMigrationsAndValidate(name, 5, true, com.moneyrecords.app.data.db.MIGRATION_4_5)
+        migrated.query("SELECT digits FROM accounts").use { c -> assertTrue(c.moveToFirst()); assertTrue(c.isNull(0)) }
+        migrated.query("SELECT COUNT(*) FROM detected").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
+    }
+
     @Test fun migrationFrom3To4KeepsRecords() {
         val name = "migration-test-4"
         migrationHelper.createDatabase(name, 3).apply {
